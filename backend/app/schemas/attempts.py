@@ -17,6 +17,7 @@ class QuestionResult(BaseModel):
     key_points_missed: list[str] = []
     reason: str = ""
     ai_probability: float | None = None
+    fallback: bool = False
 
 
 class AttemptOut(OutBase):
@@ -29,3 +30,27 @@ class AttemptOut(OutBase):
     results: dict[str, QuestionResult] = Field(default_factory=dict)
     flags: dict[str, FlagDecision] = Field(default_factory=dict)
     overrides: dict[str, float] = Field(default_factory=dict)
+
+
+class AttemptStartOut(AttemptOut):
+    deadline: datetime
+    server_now: datetime
+
+
+class AnswerIn(BaseModel):
+    qid: str
+    value: int | str
+
+
+class FlagIn(BaseModel):
+    qid: str
+    decision: FlagDecision
+
+
+class OverrideIn(BaseModel):
+    qid: str
+    score: float
+
+
+class ThresholdIn(BaseModel):
+    value: int = Field(ge=50, le=95)

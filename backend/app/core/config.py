@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = ""
     LLM_API_KEY: str = ""
     LLM_BASE_URL: str = ""
+    AI_DETECTOR: str = "heuristic"
     CORS_ORIGINS: str = "http://localhost:5173"
     MAX_UPLOAD_MB: int = 25
 

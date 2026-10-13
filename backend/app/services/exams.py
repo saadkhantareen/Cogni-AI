@@ -10,6 +10,7 @@ from app.services.exam_generator import (
     generate_questions,
     regenerate_one,
 )
+from app.services.grading import finalize_attempt
 from app.services.llm import get_llm_client
 from app.services.notify import log_activity, notify
 
@@ -85,17 +86,6 @@ async def _repeated_question_ids(exam: dict) -> list[str]:
         if q.get("source_chunk_idx") is not None
     }
     return [q["qid"] for q in exam["questions"] if q.get("source_chunk_idx") in used]
-
-
-async def finalize_attempt(attempt: dict) -> None:
-    """TODO(B7): a real grading service will replace this. Until then,
-    closing an exam must not leave in-progress attempts stranded, so this
-    stub only flips their status."""
-    db = get_db()
-    await db.attempts.update_one(
-        {"_id": attempt["_id"]},
-        {"$set": {"status": "submitted", "submitted_at": datetime.now(UTC)}},
-    )
 
 
 def _assert_teacher_owns(user: CurrentUser, exam: dict) -> None:

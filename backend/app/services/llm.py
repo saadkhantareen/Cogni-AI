@@ -217,12 +217,24 @@ class MockLLM(LLMClient):
     def _grade(self, payload: dict) -> dict:
         answer = (payload.get("answer") or "").lower()
         keywords = payload.get("keywords") or []
+        max_marks = payload.get("max_marks", 10)
+        words = [w for w in answer.split() if w]
         hit, miss = [], []
         for k in keywords:
             variants = [v.lower() for v in k.get("variants", [])]
             (hit if any(v in answer for v in variants) else miss).append(k.get("label"))
         coverage = len(hit) / len(keywords) if keywords else 0.0
-        return {"score_pct": round(coverage * 100), "key_points_hit": hit, "key_points_missed": miss}
+        len_factor = min(1.0, len(words) / 40)
+        similarity = round((coverage * 0.8 + len_factor * 0.2) * 100)
+        score = round(max_marks * coverage * 2) / 2
+        reason = "Missing: " + "; ".join(miss) if miss else "Covers every key point"
+        return {
+            "score": score,
+            "similarity": similarity,
+            "key_points_hit": hit,
+            "key_points_missed": miss,
+            "reason": reason,
+        }
 
 
 def _first_sentence(text: str) -> str:
