@@ -1,4 +1,11 @@
+from datetime import UTC, datetime, timedelta
+
 import bcrypt
+import jwt
+
+from app.core.config import settings
+
+ALGORITHM = "HS256"
 
 
 def hash_password(password: str) -> str:
@@ -10,8 +17,16 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_token(user_id: str, role: str) -> str:
-    raise NotImplementedError
+    now = datetime.now(UTC)
+    payload = {
+        "sub": user_id,
+        "role": role,
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.JWT_EXPIRE_MIN),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=ALGORITHM)
 
 
 def decode_token(token: str) -> dict:
-    raise NotImplementedError
+    """Raises jwt.PyJWTError (or a subclass) on an invalid/expired token."""
+    return jwt.decode(token, settings.JWT_SECRET, algorithms=[ALGORITHM])

@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.db import lifespan
+from app.core.errors import register_exception_handlers
+from app.routers import auth
 
 app = FastAPI(title="Cogni.ai API", lifespan=lifespan)
 
@@ -13,6 +15,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+register_exception_handlers(app)
+
+app.include_router(auth.router)
 
 
 @app.get("/api/health")
