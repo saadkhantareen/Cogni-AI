@@ -1,0 +1,4 @@
+[lint]
+# EXE002 is ignored: this filesystem mounts every file as executable
+# regardless of chmod, so the check is a permanent false positive here.
+ignore = ["EXE002"]

@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+pymongo>=4.9
+pyjwt
+bcrypt
+pypdf
+httpx
+python-dotenv
+ruff
+pytest
+pytest-asyncio
