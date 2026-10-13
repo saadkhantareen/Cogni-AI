@@ -13,6 +13,10 @@ def get_db():
 
 
 async def create_indexes():
+    """Call explicitly (e.g. from seed.py) once a database is reachable.
+    Not run from lifespan: it would make every app startup depend on Mongo
+    being up, including for `pytest`/`uvicorn` runs that don't need it yet.
+    """
     db = get_db()
     await db.users.create_index("email", unique=True)
     await db.classes.create_index("join_code", unique=True)
@@ -22,6 +26,5 @@ async def create_indexes():
 async def lifespan(app: FastAPI):
     global client
     client = AsyncMongoClient(settings.MONGO_URI)
-    await create_indexes()
     yield
     await client.close()
