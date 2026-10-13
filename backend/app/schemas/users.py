@@ -1,5 +1,7 @@
 from typing import Literal
 
+from pydantic import BaseModel
+
 from app.schemas.common import OutBase
 
 Role = Literal["admin", "hod", "teacher", "student"]
@@ -12,3 +14,16 @@ class UserOut(OutBase):
     role: Role
     dept_id: str | None = None
     status: UserStatus
+
+
+class UserCreate(BaseModel):
+    name: str
+    email: str
+    role: Role
+    dept_id: str | None = None
+
+
+class UserUpdate(BaseModel):
+    role: Role | None = None
+    dept_id: str | None = None
+    status: UserStatus | None = None

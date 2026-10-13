@@ -14,3 +14,12 @@ class DepartmentOut(OutBase):
     name: str
     hod_id: str | None = None
     policy: DeptPolicy
+
+
+class DepartmentCreate(BaseModel):
+    code: str
+    name: str
+
+
+class DepartmentUpdate(BaseModel):
+    hod_id: str | None = None

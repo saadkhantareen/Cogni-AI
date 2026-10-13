@@ -9,3 +9,9 @@ class SettingsOut(BaseModel):
     approval: ApprovalPolicy
     max_upload_mb: int
     ai_threshold_default: int
+
+
+class SettingsUpdate(BaseModel):
+    approval: ApprovalPolicy
+    max_upload_mb: int
+    ai_threshold_default: int

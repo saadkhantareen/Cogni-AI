@@ -16,3 +16,8 @@ class NotificationOut(OutBase):
     link: NotificationLink | None = None
     read: bool
     created_at: datetime
+
+
+class NotificationsListOut(BaseModel):
+    items: list[NotificationOut]
+    unread_count: int

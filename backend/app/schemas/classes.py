@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from app.schemas.common import OutBase
 
@@ -12,3 +12,23 @@ class ClassOut(OutBase):
     join_code: str
     clos: list[str] = Field(default_factory=list)
     section: str
+    student_count: int | None = None
+    exam_count: int | None = None
+
+
+class ClassCreate(BaseModel):
+    name: str
+    code: str
+    content_library: str | None = None
+
+
+class ClassUpdate(BaseModel):
+    teacher_id: str
+
+
+class AddStudentRequest(BaseModel):
+    email: str
+
+
+class JoinClassRequest(BaseModel):
+    join_code: str
