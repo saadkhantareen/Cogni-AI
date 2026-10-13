@@ -6,6 +6,7 @@ pymongo>=4.9
 pyjwt
 bcrypt
 pypdf
+python-multipart
 httpx
 python-dotenv
 ruff
