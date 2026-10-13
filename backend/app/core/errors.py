@@ -3,6 +3,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.services.llm import LLMError
+
 STATUS_CODES = {
     400: "BAD_REQUEST",
     401: "UNAUTHORIZED",
@@ -24,6 +26,10 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "code": STATUS_CODES.get(exc.status_code, "ERROR"),
             }
         return JSONResponse(status_code=exc.status_code, content=body)
+
+    @app.exception_handler(LLMError)
+    async def llm_error_handler(request: Request, exc: LLMError):
+        return JSONResponse(status_code=502, content={"detail": str(exc), "code": "LLM_FAILED"})
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):

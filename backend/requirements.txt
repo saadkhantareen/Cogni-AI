@@ -8,6 +8,8 @@ bcrypt
 pypdf
 python-multipart
 httpx
+openai
+anthropic
 python-dotenv
 ruff
 pytest

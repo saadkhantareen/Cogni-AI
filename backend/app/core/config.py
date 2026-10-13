@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "mock"
     LLM_MODEL: str = ""
     LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = ""
     CORS_ORIGINS: str = "http://localhost:5173"
     MAX_UPLOAD_MB: int = 25
 

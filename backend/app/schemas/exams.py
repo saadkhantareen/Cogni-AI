@@ -52,3 +52,57 @@ class ExamOut(OutBase):
     material_ids: list[str] = Field(default_factory=list)
     history: list[HistoryEntry] = Field(default_factory=list)
     created_at: datetime
+
+
+class GenerateCounts(BaseModel):
+    MCQ: int = 0
+    Short: int = 0
+    Essay: int = 0
+
+
+class ExamGenerateRequest(BaseModel):
+    class_id: str
+    title: str
+    kind: ExamKind
+    duration_min: int
+    material_ids: list[str]
+    counts: GenerateCounts
+    request_id: str | None = None
+
+
+class ExamGenerateResponse(BaseModel):
+    exam: ExamOut
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ExamPatch(BaseModel):
+    title: str | None = None
+    duration_min: int | None = None
+    ai_threshold: int | None = None
+
+
+class QuestionPatch(BaseModel):
+    text: str | None = None
+    options: list[str] | None = None
+    answer_index: int | None = None
+    model_answer: str | None = None
+    bloom: Bloom | None = None
+    marks: float | None = None
+
+
+class QuestionCreateRequest(BaseModel):
+    type: QuestionType
+
+
+class ApproveRequest(BaseModel):
+    comment: str | None = None
+
+
+class ReturnRequest(BaseModel):
+    comment: str
+
+
+class CheckItem(BaseModel):
+    ok: bool
+    text: str
+    detail: str
