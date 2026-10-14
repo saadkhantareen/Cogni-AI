@@ -126,5 +126,8 @@ policy checks, Bloom spread, history, status actions
 edit/regen/delete/add against the real API. Phase F6 replaces the HOD
 under-construction home with `HodApp`: `h-dash`, `h-approvals`, `h-review`
 (approve / return with comments), `h-assign` (paper requests), `h-policy`,
-and `h-analytics` (plain CSS bars). Later phases finish results, student
-portal, and the remaining admin pages.
+and `h-analytics` (plain CSS bars). Phase F7 replaces the student
+under-construction home with `StudentApp`: `s-dash`, `s-classes`,
+`s-class`, `s-exams`, `s-take` (timer + autosave + submit modal),
+`s-done`, `s-results`, `s-feedback`, and `s-study`. Later phases finish
+teacher results/attempt review and the remaining admin pages.

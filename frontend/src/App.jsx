@@ -10,6 +10,7 @@ import Login from './pages/public/Login'
 import RoleHome from './pages/RoleHome'
 import TeacherApp from './pages/teacher/TeacherApp'
 import HodApp from './pages/hod/HodApp'
+import StudentApp from './pages/student/StudentApp'
 import NotFound from './pages/NotFound'
 import StyleGuide from './pages/StyleGuide'
 
@@ -51,10 +52,16 @@ export default function App() {
                     </RoleRoute>
                   }
                 />
-                <Route path="/app/student/*" element={<RoleHomeRoute role="student" />} />
+                <Route
+                  path="/app/student/*"
+                  element={
+                    <RoleRoute roles={['student']}>
+                      <StudentApp />
+                    </RoleRoute>
+                  }
+                />
 
                 <Route path="/app/admin" element={<RoleHomeRoute role="admin" />} />
-                <Route path="/app/student" element={<RoleHomeRoute role="student" />} />
 
                 <Route path="/app" element={<Navigate to="/login" replace />} />
                 <Route path="*" element={<NotFound />} />
