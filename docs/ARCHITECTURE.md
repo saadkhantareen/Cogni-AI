@@ -117,5 +117,8 @@ Unknown paths render `pages/NotFound.jsx`. Phase F2 wires public pages,
 auth, and placeholder role homes. Phase F3 adds the authenticated `AppShell`
 (sidebar, topbar bell, demo switcher), notification drawer (poll + mark read),
 shared UI components (`PageTop`, `Stat`, `Pill`, `Modal`, `Toast`, …), and
-`useCounts()` for nav badges. Later phases replace the under-construction
-panel inside the shell with each matching v7 page.
+`useCounts()` for nav badges. Phase F4 (part 1) replaces the teacher
+under-construction home with real pages: `t-dash`, `t-classes`, `t-class`,
+`t-materials`, `t-create`, `t-exams` (plus a thin `t-exam` stub so generate can
+navigate). Later phases finish the remaining role portals and the full exam
+editor / results / flags flows.
