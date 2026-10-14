@@ -126,9 +126,16 @@ export function notificationPath(link) {
   return pageToPath(link.page, link.id)
 }
 
-/** Best-effort v7 page id from the current pathname. */
-export function pathToPage(pathname) {
+/** Best-effort v7 page id from the current pathname (+ optional search). */
+export function pathToPage(pathname, search = '') {
   const p = pathname.replace(/\/$/, '') || '/'
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+  if (p === '/app/admin/departments' && params.get('tab') === 'classes') {
+    return 'a-classes'
+  }
+  if (p === '/app/admin/settings' && params.get('tab') === 'activity') {
+    return 'a-audit'
+  }
   const rules = [
     [/^\/app\/admin\/departments\/[^/]+\/head$/, 'a-hod'],
     [/^\/app\/admin\/departments$/, 'a-depts'],
@@ -168,8 +175,8 @@ export function pathToPage(pathname) {
   return null
 }
 
-export function activeNavPage(pathname) {
-  const page = pathToPage(pathname)
+export function activeNavPage(pathname, search = '') {
+  const page = pathToPage(pathname, search)
   if (!page) return null
   return PARENT[page] || page
 }

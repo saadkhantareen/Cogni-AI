@@ -7,20 +7,11 @@ import { ToastProvider } from './components/Toast'
 import RoleRoute from './auth/RoleRoute'
 import Landing from './pages/public/Landing'
 import Login from './pages/public/Login'
-import RoleHome from './pages/RoleHome'
+import AdminApp from './pages/admin/AdminApp'
 import TeacherApp from './pages/teacher/TeacherApp'
 import HodApp from './pages/hod/HodApp'
 import StudentApp from './pages/student/StudentApp'
 import NotFound from './pages/NotFound'
-import StyleGuide from './pages/StyleGuide'
-
-function RoleHomeRoute({ role }) {
-  return (
-    <RoleRoute roles={[role]}>
-      <RoleHome />
-    </RoleRoute>
-  )
-}
 
 export default function App() {
   return (
@@ -33,9 +24,15 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
-                <Route path="/styleguide" element={<StyleGuide />} />
 
-                <Route path="/app/admin/*" element={<RoleHomeRoute role="admin" />} />
+                <Route
+                  path="/app/admin/*"
+                  element={
+                    <RoleRoute roles={['admin']}>
+                      <AdminApp />
+                    </RoleRoute>
+                  }
+                />
                 <Route
                   path="/app/hod/*"
                   element={
@@ -60,8 +57,6 @@ export default function App() {
                     </RoleRoute>
                   }
                 />
-
-                <Route path="/app/admin" element={<RoleHomeRoute role="admin" />} />
 
                 <Route path="/app" element={<Navigate to="/login" replace />} />
                 <Route path="*" element={<NotFound />} />

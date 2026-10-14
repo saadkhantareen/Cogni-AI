@@ -129,5 +129,9 @@ under-construction home with `HodApp`: `h-dash`, `h-approvals`, `h-review`
 and `h-analytics` (plain CSS bars). Phase F7 replaces the student
 under-construction home with `StudentApp`: `s-dash`, `s-classes`,
 `s-class`, `s-exams`, `s-take` (timer + autosave + submit modal),
-`s-done`, `s-results`, `s-feedback`, and `s-study`. Later phases finish
-teacher results/attempt review and the remaining admin pages.
+`s-done`, `s-results`, `s-feedback`, and `s-study`. Phase F8 finishes
+teacher results (`t-results`), attempt review (`t-attempt`), flags
+(`t-flags`), and the admin portal (`AdminApp`: `a-dash`, `a-users`,
+`a-add`, `a-depts`/`a-classes`, `a-hod`, `a-settings`/`a-audit`), plus
+polish (styleguide removed, loading/error/empty everywhere, README demo
+script).

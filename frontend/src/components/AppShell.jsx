@@ -81,7 +81,7 @@ export default function AppShell({ children }) {
   const bellWrap = useRef(null)
   const menuWrap = useRef(null)
 
-  const active = activeNavPage(location.pathname) || R.homePage
+  const active = activeNavPage(location.pathname, location.search) || R.homePage
   const unread = notes.unreadCount
 
   // Close overlays on route change; refresh nav counts
