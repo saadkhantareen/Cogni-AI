@@ -1,8 +1,13 @@
 import asyncio
 import json
+import logging
 import re
+import time
 
 from app.core.config import settings
+from app.core.logging import log_event
+
+logger = logging.getLogger("app.llm")
 
 
 class LLMError(Exception):
@@ -84,6 +89,15 @@ class OpenAIClient(LLMClient):
         except Exception as exc:
             raise LLMRequestError("The OpenAI request failed.") from exc
         content = response.choices[0].message.content or ""
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            log_event(
+                logger,
+                "llm_tokens",
+                provider="openai",
+                prompt_tokens=getattr(usage, "prompt_tokens", None),
+                completion_tokens=getattr(usage, "completion_tokens", None),
+            )
         return _extract_json(content)
 
 
@@ -119,6 +133,15 @@ class AnthropicClient(LLMClient):
         content = "".join(
             block.text for block in response.content if getattr(block, "type", None) == "text"
         )
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            log_event(
+                logger,
+                "llm_tokens",
+                provider="anthropic",
+                prompt_tokens=getattr(usage, "input_tokens", None),
+                completion_tokens=getattr(usage, "output_tokens", None),
+            )
         return _extract_json(content)
 
 
@@ -131,8 +154,11 @@ class MockLLM(LLMClient):
         self, system: str, user: str, *, max_tokens: int = 2000, temperature: float = 0.4
     ) -> dict:
         payload = _extract_json(user)
-        if payload.get("mode") == "grade":
+        mode = payload.get("mode")
+        if mode == "grade":
             return self._grade(payload)
+        if mode == "ask":
+            return self._ask(payload)
         return self._generate(payload)
 
     def _generate(self, payload: dict) -> dict:
@@ -214,6 +240,15 @@ class MockLLM(LLMClient):
             )
         return base
 
+    def _ask(self, payload: dict) -> dict:
+        chunks = payload.get("chunks") or []
+        if not chunks:
+            return {"answer": "I don't have any material to answer from."}
+        text = chunks[0].get("text", "")
+        sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+        answer = " ".join(sentences[:2]).strip()
+        return {"answer": answer or "I don't have any material to answer from."}
+
     def _grade(self, payload: dict) -> dict:
         answer = (payload.get("answer") or "").lower()
         keywords = payload.get("keywords") or []
@@ -272,18 +307,41 @@ async def call_json(
 ) -> dict:
     """Wraps json_complete with one retry on invalid JSON, telling the model
     to return valid JSON only. Raises LLMError (mapped to 502 LLM_FAILED)."""
+    provider = type(client).__name__
+    start = time.monotonic()
     try:
-        return await client.json_complete(
+        result = await client.json_complete(
             system, user, max_tokens=max_tokens, temperature=temperature
         )
     except LLMJSONError:
         retry_user = user + "\n\nReturn valid JSON only."
         try:
-            return await client.json_complete(
+            result = await client.json_complete(
                 system, retry_user, max_tokens=max_tokens, temperature=temperature
             )
         except LLMError as exc:
+            log_event(
+                logger,
+                "llm_call_failed",
+                provider=provider,
+                latency_ms=round((time.monotonic() - start) * 1000, 1),
+            )
             raise LLMError("The AI service returned invalid JSON twice in a row.") from exc
+    except LLMError:
+        log_event(
+            logger,
+            "llm_call_failed",
+            provider=provider,
+            latency_ms=round((time.monotonic() - start) * 1000, 1),
+        )
+        raise
+    log_event(
+        logger,
+        "llm_call",
+        provider=provider,
+        latency_ms=round((time.monotonic() - start) * 1000, 1),
+    )
+    return result
 
 
 def get_llm_client() -> LLMClient:

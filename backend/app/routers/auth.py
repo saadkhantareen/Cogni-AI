@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user
+from app.core.ratelimit import check_login_rate_limit
 from app.core.security import create_token
 from app.schemas.auth import DemoAccountOut, LoginRequest, LoginResponse, TokenUser
 from app.schemas.users import UserOut
@@ -11,7 +12,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(payload: LoginRequest):
+async def login(payload: LoginRequest, request: Request):
+    check_login_rate_limit(request)
     try:
         user = await auth_service.authenticate(payload.email, payload.password)
     except auth_service.AuthError as e:

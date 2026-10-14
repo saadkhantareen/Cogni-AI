@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     AI_DETECTOR: str = "heuristic"
     CORS_ORIGINS: str = "http://localhost:5173"
     MAX_UPLOAD_MB: int = 25
+    MAX_REQUEST_MB: int = 50
 
     @property
     def cors_origins_list(self) -> list[str]:

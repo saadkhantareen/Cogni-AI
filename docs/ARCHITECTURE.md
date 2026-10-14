@@ -19,8 +19,8 @@ ownership checks before touching the database.
   shutdown via FastAPI lifespan) and index creation.
 - `core/security.py` — password hashing (bcrypt) and JWT issue/verify.
 - `routers/` — one module per resource (auth, users, departments, classes,
-  materials, exams, attempts, requests, notifications, admin). Routers only
-  validate input, call services, and shape output.
+  materials, exams, attempts, requests, notifications, admin, dashboard).
+  Routers only validate input, call services, and shape output.
 - `schemas/` — Pydantic v2 request/response models, one module per resource,
   mirroring `docs/DATA_MODEL.md`.
 - `services/` — business logic and Mongo queries (one module per resource),

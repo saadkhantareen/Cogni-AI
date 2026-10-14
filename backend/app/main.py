@@ -4,18 +4,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.db import lifespan
 from app.core.errors import register_exception_handlers
+from app.core.logging import setup_logging
+from app.core.middleware import RequestLoggingMiddleware, RequestSizeLimitMiddleware
 from app.routers import (
     admin,
     attempts,
     auth,
     classes,
+    dashboard,
     exams,
     materials,
     notifications,
     requests,
 )
 
+setup_logging()
+
 app = FastAPI(title="Cogni.ai API", lifespan=lifespan)
+
+app.add_middleware(RequestLoggingMiddleware)
+
+app.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.MAX_REQUEST_MB * 1024 * 1024)
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,6 +44,7 @@ app.include_router(exams.router)
 app.include_router(attempts.router)
 app.include_router(requests.router)
 app.include_router(notifications.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/api/health")

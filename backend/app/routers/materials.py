@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.core.deps import CurrentUser, get_current_user, require_role
+from app.core.ratelimit import check_llm_rate_limit
 from app.schemas.materials import MaterialOut, MaterialSummaryOut
+from app.schemas.study_assistant import AskRequest, AskResponse
 from app.services import materials as material_service
+from app.services import study_assistant as study_assistant_service
 
 router = APIRouter(tags=["materials"])
 
@@ -53,3 +56,13 @@ async def delete_material(
     material_id: str, teacher: CurrentUser = Depends(require_role("teacher"))
 ):
     await material_service.delete_material(teacher, material_id)
+
+
+@router.post("/api/materials/{material_id}/ask", response_model=AskResponse)
+async def ask_material(
+    material_id: str,
+    payload: AskRequest,
+    student: CurrentUser = Depends(require_role("student")),
+):
+    check_llm_rate_limit(student)
+    return await study_assistant_service.ask_material(student, material_id, payload.question)

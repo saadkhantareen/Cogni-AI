@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
 from app.core.deps import CurrentUser, get_current_user, require_role
+from app.core.ratelimit import check_llm_rate_limit
 from app.schemas.exams import (
     ApproveRequest,
     ExamGenerateRequest,
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/api/exams", tags=["exams"])
 async def generate_exam(
     payload: ExamGenerateRequest, teacher: CurrentUser = Depends(require_role("teacher"))
 ):
+    check_llm_rate_limit(teacher)
     exam, warnings = await exam_service.generate_exam(teacher, payload)
     return {"exam": exam, "warnings": warnings}
 
@@ -69,6 +71,7 @@ async def delete_question(
 async def regenerate_question(
     exam_id: str, qid: str, teacher: CurrentUser = Depends(require_role("teacher"))
 ):
+    check_llm_rate_limit(teacher)
     return await exam_service.regenerate_question(teacher, exam_id, qid)
 
 
