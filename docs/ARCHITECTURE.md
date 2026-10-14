@@ -114,5 +114,8 @@ redirects to that role's home. After login the client navigates to
 | `s-study` | `/app/student/study` | `pages/student/StudyAssistant.jsx` |
 
 Unknown paths render `pages/NotFound.jsx`. Phase F2 wires public pages,
-auth, and placeholder role homes; later phases replace each placeholder with
-the matching v7 page.
+auth, and placeholder role homes. Phase F3 adds the authenticated `AppShell`
+(sidebar, topbar bell, demo switcher), notification drawer (poll + mark read),
+shared UI components (`PageTop`, `Stat`, `Pill`, `Modal`, `Toast`, …), and
+`useCounts()` for nav badges. Later phases replace the under-construction
+panel inside the shell with each matching v7 page.
