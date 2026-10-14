@@ -93,6 +93,20 @@ export function kindLabel(kind) {
   return kind || '—'
 }
 
+/** Match backend `needs_approval` / v7 `needsApproval`. Default policy is seed `major`. */
+export function needsApproval(exam, approval = 'major') {
+  if (exam && exam.approval != null) return !!exam.approval
+  if (approval === 'all') return true
+  if (approval === 'major') return exam?.kind !== 'Quiz'
+  return false
+}
+
+export function examMaxMarks(exam) {
+  return (exam?.questions || []).reduce((s, q) => s + (Number(q.marks) || 0), 0)
+}
+
+export const BLOOM_SPREAD = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate']
+
 export function wordCount(text) {
   return String(text || '')
     .trim()

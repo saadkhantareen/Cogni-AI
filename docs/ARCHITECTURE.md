@@ -120,5 +120,8 @@ shared UI components (`PageTop`, `Stat`, `Pill`, `Modal`, `Toast`, …), and
 `useCounts()` for nav badges. Phase F4 (part 1) replaces the teacher
 under-construction home with real pages: `t-dash`, `t-classes`, `t-class`,
 `t-materials`, `t-create`, `t-exams` (plus a thin `t-exam` stub so generate can
-navigate). Later phases finish the remaining role portals and the full exam
-editor / results / flags flows.
+navigate). Phase F5 completes `t-exam` (`ExamEditor` + full `QuestionCard`):
+policy checks, Bloom spread, history, status actions
+(submit/withdraw/publish/close/delete), and per-question
+edit/regen/delete/add against the real API. Later phases finish HOD review,
+results, flags, and the remaining role portals.
