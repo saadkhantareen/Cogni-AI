@@ -123,5 +123,8 @@ under-construction home with real pages: `t-dash`, `t-classes`, `t-class`,
 navigate). Phase F5 completes `t-exam` (`ExamEditor` + full `QuestionCard`):
 policy checks, Bloom spread, history, status actions
 (submit/withdraw/publish/close/delete), and per-question
-edit/regen/delete/add against the real API. Later phases finish HOD review,
-results, flags, and the remaining role portals.
+edit/regen/delete/add against the real API. Phase F6 replaces the HOD
+under-construction home with `HodApp`: `h-dash`, `h-approvals`, `h-review`
+(approve / return with comments), `h-assign` (paper requests), `h-policy`,
+and `h-analytics` (plain CSS bars). Later phases finish results, student
+portal, and the remaining admin pages.
