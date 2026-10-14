@@ -9,15 +9,15 @@ from pymongo import AsyncMongoClient
 from app.core.config import settings
 from app.main import app
 from app.prompts.grading import build_grading_user_prompt
-from app.seed import main as seed_main
 from app.services import grading as grading_service
+from tests.helpers import WORLD_PASSWORD
 from app.services.llm import LLMClient, get_llm_client
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
 
 
-def _auth(client, email, password="demo123"):
+def _auth(client, email, password=WORLD_PASSWORD):
     resp = client.post("/api/auth/login", json={"email": email, "password": password})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 

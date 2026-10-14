@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext'
 import ThemeButton from '../../components/ThemeButton'
 import Logo from '../../components/Logo'
 import { Icon, Illo } from '../../components/IconSprite'
@@ -15,10 +16,13 @@ function smoothScrollTo(id) {
 
 export default function Landing() {
   const navigate = useNavigate()
+  const { publicConfig } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
+  const signupEnabled = publicConfig?.student_signup_enabled !== false
+  const institution = publicConfig?.institution_name
 
   useEffect(() => {
-    document.title = 'Cogni.ai · AI-assisted exam platform (demo)'
+    document.title = 'Cogni.ai · AI-assisted exam platform'
   }, [])
 
   useEffect(() => {
@@ -71,9 +75,11 @@ export default function Landing() {
           <button type="button" className="btn ghost hide-sm" onClick={goLogin}>
             Sign in
           </button>
-          <button type="button" className="btn primary" onClick={goLogin}>
-            Open the demo
-          </button>
+          {signupEnabled ? (
+            <button type="button" className="btn primary hide-sm" onClick={() => navigate('/register')}>
+              Create student account
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn icon ghost menu-btn"
@@ -101,16 +107,18 @@ export default function Landing() {
         <button type="button" onClick={goLogin}>
           Sign in
         </button>
-        <button type="button" onClick={goLogin}>
-          Open the demo
-        </button>
+        {signupEnabled ? (
+          <button type="button" onClick={() => navigate('/register')}>
+            Create student account
+          </button>
+        ) : null}
       </nav>
       <main id="top">
         <section className="lhero" aria-labelledby="hero-h">
           <div className="lglow" aria-hidden="true" />
           <span className="kick">
             <b aria-hidden="true" />
-            For teachers, HODs, students and admins
+            {institution ? `${institution} · ` : ''}For teachers, HODs, students and admins
           </span>
           <h1 id="hero-h">
             From notes to <span>graded</span> exams
@@ -121,11 +129,17 @@ export default function Landing() {
           </p>
           <div className="ctas">
             <button type="button" className="btn primary lg" onClick={goLogin}>
-              Try the demo <Icon name="arrow" />
+              Sign in <Icon name="arrow" />
             </button>
-            <a className="btn lg" href="#how" onClick={(e) => onAnchor(e, 'how')}>
-              See how it works
-            </a>
+            {signupEnabled ? (
+              <button type="button" className="btn lg" onClick={() => navigate('/register')}>
+                Create student account
+              </button>
+            ) : (
+              <a className="btn lg" href="#how" onClick={(e) => onAnchor(e, 'how')}>
+                See how it works
+              </a>
+            )}
           </div>
           <figure className="pv" aria-label="Preview of the teacher dashboard">
             <div className="pv-bar" aria-hidden="true">
@@ -144,7 +158,7 @@ export default function Landing() {
               </div>
               <div className="pv-main">
                 <div className="pv-date">Monday, 29 September</div>
-                <div className="pv-h">Good morning, Ayesha</div>
+                <div className="pv-h">Good morning, Alex</div>
                 <div className="pv-focus">
                   <div>
                     <small>Next up</small>
@@ -157,7 +171,7 @@ export default function Landing() {
                   <div>
                     <div className="pv-sec">Needs you</div>
                     <div className="pv-row">
-                      <span>Midterm requested by Prof. Tariq</span>
+                      <span>Midterm requested by your HOD</span>
                       <span className="pill p-grey">Request</span>
                     </div>
                     <div className="pv-row">
@@ -270,11 +284,18 @@ export default function Landing() {
         <section className="lsec" aria-labelledby="cta-h">
           <div className="lwrap reveal">
             <div className="lcta">
-              <h2 id="cta-h">Run the whole loop in two minutes.</h2>
-              <p>12 demo accounts, one click each. Sample data only.</p>
-              <button type="button" className="btn primary lg" onClick={goLogin}>
-                Open the demo <Icon name="arrow" />
-              </button>
+              <h2 id="cta-h">Ready for your institution?</h2>
+              <p>Sign in with your work email, or create a student account when signup is open.</p>
+              <div className="row" style={{ justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button type="button" className="btn primary lg" onClick={goLogin}>
+                  Sign in <Icon name="arrow" />
+                </button>
+                {signupEnabled ? (
+                  <button type="button" className="btn lg" onClick={() => navigate('/register')}>
+                    Create student account
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         </section>
@@ -288,7 +309,7 @@ export default function Landing() {
             <Logo />
             <p>AI drafts exams and grades answers. People approve every step.</p>
             <button type="button" className="btn primary" onClick={goLogin}>
-              Open the demo
+              Sign in
             </button>
           </div>
           <nav aria-label="Product">
@@ -312,8 +333,7 @@ export default function Landing() {
           <div>
             <h3>Project</h3>
             <span>Final-year project · 2026</span>
-            <span>Built with React, FastAPI and Supabase</span>
-            <span>Demo build · sample data only</span>
+            <span>Built with React, FastAPI and MongoDB</span>
           </div>
         </div>
         <div className="lwrap lf-bottom">

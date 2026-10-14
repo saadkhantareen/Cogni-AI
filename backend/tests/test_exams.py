@@ -5,13 +5,13 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.main import app
-from app.seed import main as seed_main
+from tests.helpers import WORLD_PASSWORD
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
 
 
-def _auth(client, email, password="demo123"):
+def _auth(client, email, password=WORLD_PASSWORD):
     resp = client.post("/api/auth/login", json={"email": email, "password": password})
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 

@@ -37,8 +37,8 @@ export default async function globalSetup() {
     }
   }
 
-  console.log(`[e2e] Seeding ${env.MONGO_DB} via ${python} -m app.seed --force …`)
-  const result = spawnSync(python, ['-m', 'app.seed', '--force'], {
+  console.log(`[e2e] Loading fixture world into ${env.MONGO_DB} via ${python} -m tests.support.world --force …`)
+  const result = spawnSync(python, ['-m', 'tests.support.world', '--force'], {
     cwd: backendDir,
     env,
     encoding: 'utf8',

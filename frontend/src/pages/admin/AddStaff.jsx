@@ -6,6 +6,8 @@ import { ShellError, ShellLoading } from '../../components/AppShell'
 import Field from '../../components/Field'
 import { Icon } from '../../components/IconSprite'
 import PageTop from '../../components/PageTop'
+import TemporaryPasswordDialog from '../../components/TemporaryPasswordDialog'
+import { useModal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 
 /**
@@ -14,6 +16,7 @@ import { useToast } from '../../components/Toast'
 export default function AddStaff() {
   const navigate = useNavigate()
   const toast = useToast()
+  const { openModal, closeModal } = useModal()
 
   const [depts, setDepts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -49,7 +52,7 @@ export default function AddStaff() {
     const n = name.trim()
     const em = email.trim().toLowerCase()
     if (!n) next.name = 'Enter a full name'
-    if (!/.+@.+\..+/.test(em)) next.email = 'Enter an email like name@umt.edu.pk'
+    if (!/.+@.+\..+/.test(em)) next.email = 'Enter an email like name@school.edu'
     if (role === 'teacher' && !deptId) next.dept = 'Choose a department'
     setErrors(next)
     if (Object.keys(next).length) return
@@ -57,17 +60,28 @@ export default function AddStaff() {
     setBusy(true)
     try {
       const createdRole = role === 'teacher' && makeHod ? 'hod' : role
-      const created = await api.createAdminUser({
+      const res = await api.createAdminUser({
         name: n,
         email: em,
         role: createdRole,
         dept_id: role === 'admin' ? null : deptId,
       })
+      const created = res.user
       if (role === 'teacher' && makeHod && created.role !== 'hod') {
         await api.patchAdminDepartment(deptId, { hod_id: created.id })
       }
-      toast(`${created.name} added. They can sign in with demo123.`)
-      navigate('/app/admin/users')
+      toast(`${created.name} added`)
+      openModal(
+        <TemporaryPasswordDialog
+          userLabel={`${created.name} · ${created.email}`}
+          temporaryPassword={res.temporary_password}
+          onClose={() => {
+            closeModal()
+            navigate('/app/admin/users')
+          }}
+        />,
+        { onClose: () => navigate('/app/admin/users') },
+      )
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Could not add staff.'
       if (err instanceof ApiError && err.status === 409) setErrors({ email: msg })
@@ -110,7 +124,7 @@ export default function AddStaff() {
             id="af-email"
             type="email"
             autoComplete="off"
-            placeholder="name@umt.edu.pk"
+            placeholder="name@school.edu"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             disabled={busy}
@@ -186,8 +200,8 @@ export default function AddStaff() {
         ) : null}
 
         <p className="small">
-          Their first password is <span className="mono">demo123</span>. Students aren&apos;t
-          added here; they sign up themselves.
+          A temporary password is shown once after you add them. Students aren&apos;t added here
+          when self-signup is enabled.
         </p>
         <div className="row">
           <button

@@ -6,7 +6,6 @@ import EmptyState from '../../components/EmptyState'
 import { useToast } from '../../components/Toast'
 import {
   attemptPercent,
-  buildUserDirectory,
   classHue,
   formatTeacherName,
   formatSubmittedAt,
@@ -33,7 +32,6 @@ export default function ClassDetail() {
   const [exams, setExams] = useState([])
   const [materials, setMaterials] = useState([])
   const [attempts, setAttempts] = useState([])
-  const [teachers, setTeachers] = useState({})
   const [classIndex, setClassIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -42,19 +40,17 @@ export default function ClassDetail() {
     setLoading(true)
     setError(null)
     try {
-      const [c, xs, mats, ats, demos, allClasses] = await Promise.all([
+      const [c, xs, mats, ats, allClasses] = await Promise.all([
         api.getClass(id),
         api.listExams({ class_id: id }),
         api.listMaterials(id),
         api.listMyAttempts(),
-        api.getDemoAccounts().catch(() => []),
         api.listClasses().catch(() => []),
       ])
       setCls(c)
       setExams(xs || [])
       setMaterials(mats || [])
       setAttempts(ats || [])
-      setTeachers(buildUserDirectory(demos))
       const idx = (allClasses || []).findIndex((x) => x.id === id)
       setClassIndex(idx >= 0 ? idx : 0)
     } catch (err) {
@@ -115,7 +111,7 @@ export default function ClassDetail() {
   }
   if (!cls) return <EmptyState>Class not found.</EmptyState>
 
-  const teacher = formatTeacherName(teachers[cls.teacher_id]?.name)
+  const teacher = formatTeacherName()
   const hue = classHue(classIndex)
 
   let body = null

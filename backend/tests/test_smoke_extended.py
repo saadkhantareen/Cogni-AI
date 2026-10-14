@@ -7,7 +7,7 @@ from pymongo import AsyncMongoClient
 
 from app.core.config import settings
 from app.main import app
-from app.seed import main as seed_main
+from tests.support.world import TEST_PASSWORD, main as world_main
 from tests.helpers import login_as
 
 pytestmark = pytest.mark.api
@@ -38,9 +38,9 @@ async def test_seed_idempotent_user_counts(client):
     """Running seed twice yields the same user count (full recreate, stable)."""
     conn = AsyncMongoClient(settings.MONGO_URI)
     db = conn[settings.MONGO_DB]
-    await seed_main(force=False)
+    await world_main(force=False)
     count1 = await db.users.count_documents({})
-    await seed_main(force=False)
+    await world_main(force=False)
     count2 = await db.users.count_documents({})
     await conn.close()
     assert count1 == count2
@@ -68,7 +68,7 @@ async def test_indexes_unique_email_and_join_code(client):
 def test_responses_never_leak_password_keys(client):
     login = client.post(
         "/api/auth/login",
-        json={"email": "admin@cogni.pk", "password": "demo123"},
+        json={"email": "admin@cogni.pk", "password": TEST_PASSWORD},
     )
     assert login.status_code == 200
     _assert_no_password_keys(login.json())
@@ -82,9 +82,9 @@ def test_responses_never_leak_password_keys(client):
     assert users.status_code == 200
     _assert_no_password_keys(users.json())
 
-    demos = client.get("/api/auth/demo-accounts")
-    assert demos.status_code == 200
-    _assert_no_password_keys(demos.json())
+    cfg = client.get("/api/public/config")
+    assert cfg.status_code == 200
+    _assert_no_password_keys(cfg.json())
 
     # also a non-admin sample
     teacher = login_as(client, "teacher")

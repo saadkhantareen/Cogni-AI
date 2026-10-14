@@ -37,7 +37,7 @@ function redirectToLogin() {
   clearToken()
   if (typeof window === 'undefined') return
   const path = window.location.pathname
-  if (path === '/login' || path === '/') return
+  if (path === '/login' || path === '/' || path === '/change-password') return
   window.location.assign('/login')
 }
 

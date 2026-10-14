@@ -25,8 +25,10 @@ ownership checks before touching the database.
   mirroring `docs/DATA_MODEL.md`.
 - `services/` — business logic and Mongo queries (one module per resource),
   plus `services/llm.py` for AI calls. Routers never talk to Mongo directly.
-- `seed.py` — populates a fresh database with the same demo users, depts,
-  classes and exams as the v7 prototype's `seed()`, for local development.
+- Test fixture world — `backend/tests/support/world.py` populates a fresh
+  database with the same demo users, depts, classes and exams as the v7
+  prototype's `seed()`, for pytest and local dev (`python -m tests.support.world`).
+  Not shipped as part of the application package.
 
 **frontend/src/**
 - `api/` — a thin fetch wrapper (base URL, JSON headers, bearer token

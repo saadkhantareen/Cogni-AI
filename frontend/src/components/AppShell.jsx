@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import * as api from '../api'
-import { ROLE_HOME, useAuth } from '../auth/AuthContext'
+import { useAuth } from '../auth/AuthContext'
 import useCounts from '../hooks/useCounts'
 import useNotifications from '../hooks/useNotifications'
 import { formatShortDate, initials } from '../utils/format'
@@ -12,8 +12,6 @@ import { Icon } from './IconSprite'
 import { useToast } from './Toast'
 import Spinner from './Spinner'
 import EmptyState from './EmptyState'
-
-const DEMO_PASSWORD = 'demo123'
 
 function NotificationDrawer({ open, items, unread, loading, error, onMarkAll, onNote }) {
   if (!open) return null
@@ -58,10 +56,10 @@ function NotificationDrawer({ open, items, unread, loading, error, onMarkAll, on
 
 /**
  * Authenticated app chrome matching v7 `render()` shell:
- * sidebar, demo banner, topnav (bell + account), main, mobile scrim.
+ * sidebar, optional admin LLM warning, topnav (bell + account), main, mobile scrim.
  */
 export default function AppShell({ children }) {
-  const { user, login, logout } = useAuth()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const toast = useToast()
@@ -74,9 +72,7 @@ export default function AppShell({ children }) {
   const [navOpen, setNavOpen] = useState(false)
   const [bellOpen, setBellOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [demoAccounts, setDemoAccounts] = useState([])
-  const [switching, setSwitching] = useState(false)
-  const [deptLabel, setDeptLabel] = useState(null)
+  const [llmStatus, setLlmStatus] = useState(null)
 
   const bellWrap = useRef(null)
   const menuWrap = useRef(null)
@@ -84,7 +80,9 @@ export default function AppShell({ children }) {
   const active = activeNavPage(location.pathname, location.search) || R.homePage
   const unread = notes.unreadCount
 
-  // Close overlays on route change; refresh nav counts
+  const footPlace = user?.dept_name || user?.institution_name || 'Institution'
+  const footTerm = user?.current_term || ''
+
   useEffect(() => {
     setNavOpen(false)
     setBellOpen(false)
@@ -98,7 +96,6 @@ export default function AppShell({ children }) {
     return () => document.body.classList.remove('nav-open')
   }, [navOpen])
 
-  // Close popovers on outside click / Esc
   useEffect(() => {
     if (!bellOpen && !menuOpen) return undefined
     const onDown = (e) => {
@@ -121,25 +118,24 @@ export default function AppShell({ children }) {
     }
   }, [bellOpen, menuOpen])
 
-  // Demo accounts for switcher (+ dept label for sidebar foot)
   useEffect(() => {
+    if (role !== 'admin') {
+      setLlmStatus(null)
+      return undefined
+    }
     let cancelled = false
     api
-      .getDemoAccounts()
-      .then((list) => {
-        if (cancelled) return
-        const arr = Array.isArray(list) ? list : []
-        setDemoAccounts(arr)
-        const mine = arr.find((a) => a.email === user?.email || a.id === user?.id)
-        setDeptLabel(mine?.dept_name || null)
+      .getAdminLlmStatus()
+      .then((s) => {
+        if (!cancelled) setLlmStatus(s)
       })
       .catch(() => {
-        if (!cancelled) setDemoAccounts([])
+        if (!cancelled) setLlmStatus(null)
       })
     return () => {
       cancelled = true
     }
-  }, [user?.email, user?.id])
+  }, [role])
 
   useEffect(() => {
     const cur = R.nav.find((n) => n.page === active)
@@ -187,28 +183,7 @@ export default function AppShell({ children }) {
     }
   }
 
-  const onSwitch = async (email) => {
-    if (!email || email === user.email) return
-    setSwitching(true)
-    try {
-      const next = await login(email, DEMO_PASSWORD)
-      setMenuOpen(false)
-      toast(`Signed in as ${next.name}`)
-      navigate(ROLE_HOME[next.role] || '/login', { replace: true })
-    } catch (err) {
-      toast(err?.message || 'Could not switch account', { type: 'error' })
-    } finally {
-      setSwitching(false)
-    }
-  }
-
-  const byRole = { admin: [], hod: [], teacher: [], student: [] }
-  for (const a of demoAccounts) {
-    if (a.status && a.status !== 'active') continue
-    if (byRole[a.role]) byRole[a.role].push(a)
-  }
-
-  const footPlace = deptLabel || 'Institution'
+  const showMockLlmBanner = llmStatus?.provider === 'mock'
 
   return (
     <div id="v-app">
@@ -257,21 +232,21 @@ export default function AppShell({ children }) {
             })}
           </nav>
           <div className="foot">
-            {footPlace} · Fall 2026
+            {footPlace}
+            {footTerm ? ` · ${footTerm}` : ''}
           </div>
         </aside>
 
         <div className="col">
-          <div className="demo-banner" id="demo-banner">
-            <Icon name="flask" className="sm" />
-            <span>
-              <b>Demo mode.</b> Sample data
-              <span className="long">
-                , saved only in this browser. Changes are shared across all four portals
+          {showMockLlmBanner ? (
+            <div className="demo-banner" id="llm-banner" role="status">
+              <Icon name="warn" className="sm" />
+              <span>
+                <b>LLM provider is mock.</b> Exam generation uses canned responses until you configure
+                a real provider in the server environment.
               </span>
-              .
-            </span>
-          </div>
+            </div>
+          ) : null}
 
           <header className="topnav" id="topnav">
             <button
@@ -362,39 +337,8 @@ export default function AppShell({ children }) {
                     <div className="small">{user.email}</div>
                     <div className="small">
                       {R.name}
-                      {deptLabel ? ` · ${deptLabel}` : ''}
+                      {user.dept_name ? ` · ${user.dept_name}` : ''}
                     </div>
-                  </div>
-                  <div className="sec">
-                    <label
-                      className="lbl"
-                      htmlFor="switch"
-                      style={{ display: 'flex', gap: 6, alignItems: 'center' }}
-                    >
-                      <Icon name="swap" className="sm" />
-                      Switch demo account
-                    </label>
-                    <select
-                      id="switch"
-                      disabled={switching}
-                      defaultValue=""
-                      onChange={(e) => {
-                        const v = e.target.value
-                        e.target.value = ''
-                        onSwitch(v)
-                      }}
-                    >
-                      <option value="">Choose an account…</option>
-                      {['admin', 'hod', 'teacher', 'student'].map((r) => (
-                        <optgroup key={r} label={ROLE[r].name}>
-                          {byRole[r].map((u) => (
-                            <option key={u.id} value={u.email} disabled={u.id === user.id}>
-                              {u.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
                   </div>
                   <button type="button" className="menu-item danger" onClick={onSignOut}>
                     <Icon name="out" />

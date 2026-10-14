@@ -5,7 +5,7 @@ import { ShellError, ShellLoading } from '../../components/AppShell'
 import { Icon } from '../../components/IconSprite'
 import PageTop from '../../components/PageTop'
 import Pill from '../../components/Pill'
-import { buildUserDirectory, formatTeacherName } from '../../utils/student'
+import { formatTeacherName } from '../../utils/student'
 
 /** Post-submit confirmation (v7 `P['s-done']`). */
 export default function ExamDone() {
@@ -37,9 +37,7 @@ export default function ExamDone() {
         } catch {
           setCls(null)
         }
-        const demos = await api.getDemoAccounts().catch(() => [])
-        const dir = buildUserDirectory(demos)
-        setTeacherName(formatTeacherName(dir[x.teacher_id]?.name))
+        setTeacherName(formatTeacherName())
       }
     } catch (err) {
       setError(err)

@@ -145,16 +145,15 @@ export default function ExamEditor() {
         /* keep major */
       }
 
-      const [c, ck, xs, demos] = await Promise.all([
+      const [c, ck, xs] = await Promise.all([
         api.getClass(x.class_id).catch(() => null),
         api.getExamChecks(id).catch(() => []),
         api.listExams({ class_id: x.class_id }).catch(() => []),
-        api.getDemoAccounts().catch(() => []),
       ])
       setCls(c)
       setChecks(Array.isArray(ck) ? ck : [])
       setClassExams(xs || [])
-      setHodName((demos || []).find((u) => u.role === 'hod')?.name || '')
+      setHodName('')
 
       const map = new Map()
       await Promise.all(

@@ -6,7 +6,7 @@ from app.schemas.admin import SummaryOut
 from app.schemas.classes import ClassOut, ClassUpdate
 from app.schemas.departments import DepartmentCreate, DepartmentOut, DepartmentUpdate
 from app.schemas.settings import SettingsOut, SettingsUpdate
-from app.schemas.users import UserCreate, UserOut, UserUpdate
+from app.schemas.users import PasswordResetResult, UserCreate, UserCreateResult, UserOut, UserUpdate
 from app.services import admin as admin_service
 from app.services import classes as class_service
 from app.services import departments as dept_service
@@ -25,10 +25,13 @@ async def list_users(
     return await user_service.list_users(role, q)
 
 
-@router.post("/users", response_model=UserOut, status_code=201)
+@router.post("/users", response_model=UserCreateResult, status_code=201)
 async def create_user(payload: UserCreate, admin: CurrentUser = Depends(require_role("admin"))):
-    return await user_service.create_user(
+    user, temporary_password = await user_service.create_user(
         admin, payload.name, payload.email, payload.role, payload.dept_id
+    )
+    return UserCreateResult(
+        user=UserOut.model_validate(user), temporary_password=temporary_password
     )
 
 
@@ -39,9 +42,10 @@ async def update_user(
     return await user_service.update_user(admin, user_id, payload.model_dump(exclude_unset=True))
 
 
-@router.post("/users/{user_id}/reset-password", status_code=204)
+@router.post("/users/{user_id}/reset-password", response_model=PasswordResetResult)
 async def reset_password(user_id: str, admin: CurrentUser = Depends(require_role("admin"))):
-    await user_service.reset_password(admin, user_id)
+    temporary_password = await user_service.reset_password(admin, user_id)
+    return PasswordResetResult(temporary_password=temporary_password)
 
 
 @router.get("/departments", response_model=list[DepartmentOut])
@@ -84,9 +88,7 @@ async def get_settings(admin: CurrentUser = Depends(require_role("admin"))):
 async def update_settings(
     payload: SettingsUpdate, admin: CurrentUser = Depends(require_role("admin"))
 ):
-    return await settings_service.update_settings(
-        admin, payload.approval, payload.max_upload_mb, payload.ai_threshold_default
-    )
+    return await settings_service.update_settings(admin, payload.model_dump(exclude_unset=True))
 
 
 @router.get("/activity", response_model=list[ActivityLogOut])
@@ -99,3 +101,13 @@ async def activity(
 @router.get("/summary", response_model=SummaryOut)
 async def summary(admin: CurrentUser = Depends(require_role("admin"))):
     return await admin_service.summary()
+
+
+@router.get("/onboarding")
+async def onboarding(admin: CurrentUser = Depends(require_role("admin"))):
+    return await admin_service.onboarding()
+
+
+@router.get("/llm-status")
+async def llm_status(admin: CurrentUser = Depends(require_role("admin"))):
+    return await admin_service.llm_status()

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from tests.helpers import DEMO_PASSWORD, login_as, make_exam_draft, upload_material
+from tests.helpers import WORLD_PASSWORD, login_as, make_exam_draft, upload_material
 
 pytestmark = pytest.mark.e2e
 
@@ -45,33 +45,30 @@ def test_full_demo_loop(client):
     assert dept.status_code == 201, dept.text
     dept_id = dept.json()["id"]
 
-    hod_user = client.post(
-        "/api/admin/users",
-        json={
-            "name": f"QA HOD {tag}",
-            "email": f"qa.hod.{tag}@umt.edu.pk",
-            "role": "teacher",
-            "dept_id": dept_id,
-        },
-        headers=admin,
-    )
-    assert hod_user.status_code == 201, hod_user.text
-    hod_id = hod_user.json()["id"]
-    hod_email = hod_user.json()["email"]
+    def _staff(name, email, role="teacher"):
+        resp = client.post(
+            "/api/admin/users",
+            json={"name": name, "email": email, "role": role, "dept_id": dept_id},
+            headers=admin,
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        user = body["user"]
+        temp = body["temporary_password"]
+        # Complete forced password change so normal tokens work.
+        tok = client.post(
+            "/api/auth/login", json={"email": user["email"], "password": temp}
+        ).json()["access_token"]
+        changed = client.post(
+            "/api/auth/change-password",
+            json={"current_password": temp, "new_password": WORLD_PASSWORD},
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+        assert changed.status_code == 200, changed.text
+        return user["id"], user["email"]
 
-    teacher_user = client.post(
-        "/api/admin/users",
-        json={
-            "name": f"QA Teacher {tag}",
-            "email": f"qa.teacher.{tag}@umt.edu.pk",
-            "role": "teacher",
-            "dept_id": dept_id,
-        },
-        headers=admin,
-    )
-    assert teacher_user.status_code == 201, teacher_user.text
-    teacher_id = teacher_user.json()["id"]
-    teacher_email = teacher_user.json()["email"]
+    hod_id, hod_email = _staff(f"QA HOD {tag}", f"qa.hod.{tag}@umt.edu.pk")
+    teacher_id, teacher_email = _staff(f"QA Teacher {tag}", f"qa.teacher.{tag}@umt.edu.pk")
 
     patched = client.patch(
         f"/api/admin/departments/{dept_id}",
@@ -197,18 +194,10 @@ def test_full_demo_loop(client):
     # --- 6. Three students join; two attempt (clean / AI-ish); one skips ---
     student_emails = []
     for i in range(3):
-        su = client.post(
-            "/api/admin/users",
-            json={
-                "name": f"QA Student{i} {tag}",
-                "email": f"qa.stu{i}.{tag}@umt.edu.pk",
-                "role": "student",
-                "dept_id": dept_id,
-            },
-            headers=admin,
+        _sid, semail = _staff(
+            f"QA Student{i} {tag}", f"qa.stu{i}.{tag}@umt.edu.pk", role="student"
         )
-        assert su.status_code == 201, su.text
-        student_emails.append(su.json()["email"])
+        student_emails.append(semail)
 
     for email in student_emails:
         sh = login_as(client, email)

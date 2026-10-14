@@ -12,6 +12,7 @@ export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [summary, setSummary] = useState(null)
+  const [onboarding, setOnboarding] = useState(null)
   const [depts, setDepts] = useState([])
   const [users, setUsers] = useState([])
   const [classes, setClasses] = useState([])
@@ -22,13 +23,15 @@ export default function Dashboard() {
     setLoading(true)
     setError(null)
     try {
-      const [sum, d, u, c] = await Promise.all([
+      const [sum, ob, d, u, c] = await Promise.all([
         api.getAdminSummary(),
+        api.getAdminOnboarding(),
         api.listAdminDepartments(),
         api.listAdminUsers(),
         api.listAdminClasses(),
       ])
       setSummary(sum)
+      setOnboarding(ob)
       setDepts(d || [])
       setUsers(u || [])
       setClasses(c || [])
@@ -129,6 +132,40 @@ export default function Dashboard() {
           {next ? next.btn : done.btn}
         </button>
       </section>
+
+      {onboarding?.items?.length ? (
+        <div className="panel mt">
+          <div className="panel-h">
+            <h3>Getting started</h3>
+            {onboarding.complete ? (
+              <span className="pill p-good">Complete</span>
+            ) : (
+              <span className="pill p-warn">In progress</span>
+            )}
+          </div>
+          <div className="panel-b">
+            {onboarding.items.map((item) => (
+              <div className="lrow" key={item.key}>
+                <span className={`pill ${item.done ? 'p-good' : 'p-grey'}`}>
+                  {item.done ? 'Done' : 'To do'}
+                </span>
+                <div className="grow">
+                  <b>{item.label}</b>
+                </div>
+                {!item.done && item.href ? (
+                  <button
+                    type="button"
+                    className="btn small"
+                    onClick={() => navigate(item.href)}
+                  >
+                    Open
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid g2e mt">
         <div className="panel">

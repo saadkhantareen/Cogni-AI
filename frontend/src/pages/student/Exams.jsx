@@ -7,7 +7,6 @@ import PageTop from '../../components/PageTop'
 import Pill from '../../components/Pill'
 import {
   attemptPercent,
-  buildUserDirectory,
   formatSubmittedAt,
   formatTeacherName,
 } from '../../utils/student'
@@ -22,7 +21,6 @@ export default function Exams({ classId = null }) {
   const [exams, setExams] = useState([])
   const [attempts, setAttempts] = useState([])
   const [classes, setClasses] = useState([])
-  const [teachers, setTeachers] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -32,17 +30,15 @@ export default function Exams({ classId = null }) {
     setLoading(true)
     setError(null)
     try {
-      const [xs, ats, cls, demos, dash] = await Promise.all([
+      const [xs, ats, cls, dash] = await Promise.all([
         api.listExams(classId ? { class_id: classId } : {}),
         api.listMyAttempts(),
         api.listClasses().catch(() => []),
-        api.getDemoAccounts().catch(() => []),
         api.getStudentDashboard().catch(() => null),
       ])
       setExams(xs || [])
       setAttempts(ats || [])
       setClasses(cls || [])
-      setTeachers(buildUserDirectory(demos))
       const meta = {}
       ;(dash?.released_results || []).forEach((r) => {
         meta[r.attempt_id] = r
@@ -132,7 +128,7 @@ export default function Exams({ classId = null }) {
           openNow.map((x) => {
             const at = attemptByExam.get(x.id)
             const c = classById.get(x.class_id)
-            const teacher = formatTeacherName(teachers[x.teacher_id]?.name)
+            const teacher = formatTeacherName()
             return (
               <div className="lrow" key={x.id}>
                 <Pill label="Live" tone="p-blue" />

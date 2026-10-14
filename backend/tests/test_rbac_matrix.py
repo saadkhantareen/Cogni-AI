@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 
 from app.main import app
-from tests.helpers import DEMO_PASSWORD, PERSONAS, login_as
+from tests.helpers import WORLD_PASSWORD, PERSONAS, login_as
 
 ROLES = ("anonymous", "student", "teacher", "hod", "admin")
 
@@ -25,9 +25,14 @@ ALLOWED_ROLES: dict[tuple[str, str], set[str]] = {
     # ---- public ----
     ("GET", "/api/health"): {"anonymous", "student", "teacher", "hod", "admin"},
     ("POST", "/api/auth/login"): {"anonymous", "student", "teacher", "hod", "admin"},
-    ("GET", "/api/auth/demo-accounts"): {"anonymous", "student", "teacher", "hod", "admin"},
+    ("GET", "/api/public/config"): {"anonymous", "student", "teacher", "hod", "admin"},
+    ("POST", "/api/setup/admin"): {"anonymous", "student", "teacher", "hod", "admin"},
+    ("POST", "/api/auth/register"): {"anonymous", "student", "teacher", "hod", "admin"},
+    ("POST", "/api/auth/forgot"): {"anonymous", "student", "teacher", "hod", "admin"},
+    ("POST", "/api/auth/reset"): {"anonymous", "student", "teacher", "hod", "admin"},
     # ---- any authenticated ----
     ("GET", "/api/auth/me"): {"student", "teacher", "hod", "admin"},
+    ("POST", "/api/auth/change-password"): {"student", "teacher", "hod", "admin"},
     ("GET", "/api/classes"): {"student", "teacher", "hod", "admin"},
     ("GET", "/api/exams"): {"student", "teacher", "hod", "admin"},
     ("GET", "/api/notifications"): {"student", "teacher", "hod", "admin"},
@@ -52,6 +57,8 @@ ALLOWED_ROLES: dict[tuple[str, str], set[str]] = {
     ("PUT", "/api/admin/settings"): {"admin"},
     ("GET", "/api/admin/activity"): {"admin"},
     ("GET", "/api/admin/summary"): {"admin"},
+    ("GET", "/api/admin/onboarding"): {"admin"},
+    ("GET", "/api/admin/llm-status"): {"admin"},
     # ---- teacher ----
     ("POST", "/api/classes"): {"teacher"},
     ("POST", "/api/classes/{class_id}/students"): {"teacher"},
@@ -104,7 +111,11 @@ ALLOWED_ROLES: dict[tuple[str, str], set[str]] = {
 PUBLIC_ROUTES = {
     ("GET", "/api/health"),
     ("POST", "/api/auth/login"),
-    ("GET", "/api/auth/demo-accounts"),
+    ("GET", "/api/public/config"),
+    ("POST", "/api/setup/admin"),
+    ("POST", "/api/auth/register"),
+    ("POST", "/api/auth/forgot"),
+    ("POST", "/api/auth/reset"),
 }
 
 # Teacher lifecycle ops that should target a published exam (expect 400/409).
@@ -164,7 +175,8 @@ def _build_world(client) -> dict:
     notif_id = notifs["items"][0]["id"]
 
     users = client.get("/api/admin/users", headers=ad).json()
-    student_user = next(u for u in users if u["email"] == PERSONAS["student"])
+    # Sacrificial user for reset-password (must not be a persona reused for login later).
+    reset_target = next(u for u in users if u["email"] == "sana.iqbal@umt.edu.pk")
     outsider = next(u for u in users if u["email"] == PERSONAS["student_dsc"])
     depts = client.get("/api/admin/departments", headers=ad).json()
     cs = next(d for d in depts if d["code"] == "CS")
@@ -179,7 +191,7 @@ def _build_world(client) -> dict:
         "qid": qid,
         "attempt_id": attempt_id,
         "notif_id": notif_id,
-        "user_id": student_user["id"],
+        "user_id": reset_target["id"],
         "student_id": outsider["id"],  # not enrolled in CS-201-A → DELETE yields 404
         "dept_id": cs["id"],
         "hod_id": cs["hod_id"] or hod_user["id"],
@@ -223,7 +235,7 @@ def _payload_for(method: str, path: str, world: dict) -> dict | None:
     bodies: dict[tuple[str, str], dict] = {
         ("POST", "/api/auth/login"): {
             "email": PERSONAS["admin"],
-            "password": DEMO_PASSWORD,
+            "password": WORLD_PASSWORD,
         },
         ("POST", "/api/admin/users"): {
             "name": "Temp User",

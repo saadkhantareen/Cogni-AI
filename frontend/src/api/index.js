@@ -25,8 +25,28 @@ export function getMe() {
   return get('/auth/me')
 }
 
-export function getDemoAccounts() {
-  return get('/auth/demo-accounts', { skipAuth: true })
+export function publicConfig() {
+  return get('/public/config', { skipAuth: true })
+}
+
+export function setupAdmin(body) {
+  return post('/setup/admin', body, { skipAuth: true })
+}
+
+export function register(body) {
+  return post('/auth/register', body, { skipAuth: true })
+}
+
+export function forgotPassword(email) {
+  return post('/auth/forgot', { email }, { skipAuth: true })
+}
+
+export function resetPassword(body) {
+  return post('/auth/reset', body, { skipAuth: true })
+}
+
+export function changePassword(body) {
+  return post('/auth/change-password', body)
 }
 
 /* ---------- admin ---------- */
@@ -80,6 +100,14 @@ export function listAdminActivity({ role, limit } = {}) {
 
 export function getAdminSummary() {
   return get('/admin/summary')
+}
+
+export function getAdminOnboarding() {
+  return get('/admin/onboarding')
+}
+
+export function getAdminLlmStatus() {
+  return get('/admin/llm-status')
 }
 
 /* ---------- classes ---------- */

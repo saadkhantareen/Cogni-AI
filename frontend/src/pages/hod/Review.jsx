@@ -87,12 +87,11 @@ export default function Review() {
       const x = await api.getExam(id)
       setExam(x)
 
-      const [c, ck, xs, analytics, demos] = await Promise.all([
+      const [c, ck, xs, analytics] = await Promise.all([
         api.getClass(x.class_id).catch(() => null),
         api.getExamChecks(id).catch(() => []),
         api.listExams({ class_id: x.class_id }).catch(() => []),
         api.getHodAnalytics().catch(() => null),
-        api.getDemoAccounts().catch(() => []),
       ])
       setCls(c)
       setChecks(ck || [])
@@ -101,8 +100,7 @@ export default function Review() {
       const fromAnalytics = (analytics?.teacher_activity || []).find(
         (t) => t.teacher_id === x.teacher_id,
       )
-      const fromDemo = (demos || []).find((u) => u.id === x.teacher_id)
-      setTeacherName(fromAnalytics?.teacher_name || fromDemo?.name || 'teacher')
+      setTeacherName(fromAnalytics?.teacher_name || 'Teacher')
 
       const failed = (ck || []).filter((k) => !k.ok)
       if (x.status === 'pending') {

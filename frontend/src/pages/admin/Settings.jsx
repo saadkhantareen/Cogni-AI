@@ -23,6 +23,10 @@ export default function Settings() {
   const [approval, setApproval] = useState('major')
   const [maxMb, setMaxMb] = useState(10)
   const [thr, setThr] = useState(70)
+  const [institutionName, setInstitutionName] = useState('')
+  const [currentTerm, setCurrentTerm] = useState('')
+  const [studentSignup, setStudentSignup] = useState(true)
+  const [domainsText, setDomainsText] = useState('')
   const [activity, setActivity] = useState([])
   const [roleFilter, setRoleFilter] = useState('')
   const [loading, setLoading] = useState(true)
@@ -46,6 +50,10 @@ export default function Settings() {
         setApproval(s.approval)
         setMaxMb(s.max_upload_mb)
         setThr(s.ai_threshold_default)
+        setInstitutionName(s.institution_name || '')
+        setCurrentTerm(s.current_term || '')
+        setStudentSignup(s.student_signup_enabled !== false)
+        setDomainsText((s.allowed_email_domains || []).join('\n'))
       }
     } catch (err) {
       setError(err)
@@ -69,10 +77,18 @@ export default function Settings() {
 
     setSaving(true)
     try {
+      const allowed_email_domains = domainsText
+        .split(/[\n,]+/)
+        .map((d) => d.trim().toLowerCase())
+        .filter(Boolean)
       const updated = await api.putAdminSettings({
         approval,
         max_upload_mb: Math.round(mb),
         ai_threshold_default: Math.round(t),
+        institution_name: institutionName.trim(),
+        current_term: currentTerm.trim(),
+        student_signup_enabled: studentSignup,
+        allowed_email_domains,
       })
       setSettings(updated)
       toast('Settings saved')
@@ -181,6 +197,57 @@ export default function Settings() {
           <div className="grid g2e">
             <div className="panel">
               <div className="panel-h">
+                <h3>Institution</h3>
+              </div>
+              <div className="panel-b">
+                <Field id="st-inst" label="Institution name">
+                  <input
+                    id="st-inst"
+                    value={institutionName}
+                    onChange={(e) => setInstitutionName(e.target.value)}
+                    disabled={saving}
+                    placeholder="Your university or school"
+                  />
+                </Field>
+                <Field id="st-term" label="Current term">
+                  <input
+                    id="st-term"
+                    value={currentTerm}
+                    onChange={(e) => setCurrentTerm(e.target.value)}
+                    disabled={saving}
+                    placeholder="e.g. Autumn term"
+                  />
+                </Field>
+                <label className="apopt">
+                  <input
+                    type="checkbox"
+                    checked={studentSignup}
+                    onChange={(e) => setStudentSignup(e.target.checked)}
+                    disabled={saving}
+                  />
+                  <span>
+                    <b>Allow student self-signup</b>
+                    <small>When off, only admins can create student accounts.</small>
+                  </span>
+                </label>
+                <Field
+                  id="st-dom"
+                  label="Allowed email domains (optional)"
+                  hint="One domain per line, e.g. school.edu. Leave empty to allow any domain."
+                >
+                  <textarea
+                    id="st-dom"
+                    rows={3}
+                    value={domainsText}
+                    onChange={(e) => setDomainsText(e.target.value)}
+                    disabled={saving}
+                    placeholder="school.edu"
+                  />
+                </Field>
+              </div>
+            </div>
+            <div className="panel">
+              <div className="panel-h">
                 <h3>Approval workflow</h3>
               </div>
               <div className="panel-b">
@@ -239,17 +306,6 @@ export default function Settings() {
                   person always decides.
                 </p>
               </div>
-            </div>
-          </div>
-          <div className="panel mt">
-            <div className="panel-h">
-              <h3>Demo data</h3>
-            </div>
-            <div className="panel-b row">
-              <span style={{ flex: 1, minWidth: 220 }}>
-                To reset sample data, re-run the seed from the backend:{' '}
-                <span className="mono">python -m app.seed</span>
-              </span>
             </div>
           </div>
           {!settings ? (

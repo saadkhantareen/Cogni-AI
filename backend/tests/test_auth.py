@@ -8,7 +8,7 @@ from pymongo import AsyncMongoClient
 from app.core.config import settings
 from app.core.deps import require_role
 from app.main import app
-from app.seed import main as seed_main
+from tests.helpers import WORLD_PASSWORD
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
@@ -43,7 +43,7 @@ async def _set_status(email: str, status: str) -> None:
     await conn.close()
 
 
-def _login(client, email, password="demo123"):
+def _login(client, email, password=WORLD_PASSWORD):
     return client.post("/api/auth/login", json={"email": email, "password": password})
 
 
@@ -120,13 +120,14 @@ def test_role_guard_allows_correct_role(client, admin_only_route):
     assert resp.status_code == 200
 
 
-def test_demo_accounts_returns_twelve_without_hashes(client):
+def test_demo_accounts_endpoint_removed(client):
     resp = client.get("/api/auth/demo-accounts")
+    assert resp.status_code == 404
+
+
+def test_public_config_available(client):
+    resp = client.get("/api/public/config")
     assert resp.status_code == 200
-    accounts = resp.json()
-    assert len(accounts) == 12
-    counts = {}
-    for a in accounts:
-        assert "password_hash" not in a
-        counts[a["role"]] = counts.get(a["role"], 0) + 1
-    assert counts == {"admin": 3, "hod": 3, "teacher": 3, "student": 3}
+    body = resp.json()
+    assert body["needs_setup"] is False
+    assert "student_signup_enabled" in body

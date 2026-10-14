@@ -1,7 +1,10 @@
-"""Seed the database with the v7 demo world (departments, users, classes,
-materials, exams, attempts, requests, notifications, activity log).
+"""TEST/DEV fixture world — v7 demo data for pytest and local development.
 
-Usage: python -m app.seed [--force]
+NOT part of the application package (lives under ``tests/support/``).
+Populates departments, users, classes, materials, exams, attempts,
+requests, notifications, and activity log.
+
+Usage: python -m tests.support.world [--db NAME] [--force]
 
 Idempotent: always drops and recreates every collection before inserting, so
 running it twice in a row produces the same counts. Refuses to run unless
@@ -10,6 +13,7 @@ MONGO_DB ends with "_dev" or "_demo", unless --force is passed.
 
 import argparse
 import asyncio
+import os
 import re
 import sys
 import uuid
@@ -20,6 +24,8 @@ from pymongo import AsyncMongoClient
 
 from app.core.config import settings
 from app.core.security import hash_password
+
+TEST_PASSWORD = "Test-Passw0rd!"
 
 MONTHS = {
     "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
@@ -396,12 +402,14 @@ def build_attempt(exam: dict, questions: list[dict], mcq_answers: list, written_
     }
 
 
-async def main(force: bool = False) -> None:
+async def main(force: bool = False, db_name: str | None = None) -> None:
+    if db_name is not None:
+        settings.MONGO_DB = db_name
     db_name = settings.MONGO_DB
     if not force and not db_name.endswith(("_dev", "_demo")):
         print(
-            f"Refusing to seed database {db_name!r}: its name must end with "
-            "'_dev' or '_demo' unless --force is passed."
+            f"Refusing to load fixture world into database {db_name!r}: its name "
+            "must end with '_dev' or '_demo' unless --force is passed."
         )
         sys.exit(1)
     print(f"WARNING: this drops and recreates every collection in database {db_name!r}.")
@@ -447,7 +455,7 @@ async def main(force: bool = False) -> None:
         ("s6", "Ali Raza", "ali.raza@umt.edu.pk", "student", "se"),
         ("s7", "Zainab Fatima", "zainab.fatima@umt.edu.pk", "student", "dsc"),
     ]
-    pw_hash = hash_password("demo123")
+    pw_hash = hash_password(TEST_PASSWORD)
     user_result = await db.users.insert_many(
         [
             {
@@ -652,7 +660,18 @@ async def main(force: bool = False) -> None:
     )
 
     # ---- settings -----------------------------------------------------------
-    await db.settings.insert_one({"approval": "major", "max_upload_mb": 25, "ai_threshold_default": 70})
+    await db.settings.insert_one(
+        {
+            "singleton": True,
+            "approval": "major",
+            "max_upload_mb": 25,
+            "ai_threshold_default": 70,
+            "institution_name": "Demo University",
+            "current_term": "Fall 2026",
+            "student_signup_enabled": True,
+            "allowed_email_domains": [],
+        }
+    )
 
     # Dropping collections above also drops indexes; recreate them so uniqueness
     # constraints hold for the rest of the process (and for tests that reseed).
@@ -676,6 +695,15 @@ async def main(force: bool = False) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--db",
+        dest="db_name",
+        default=None,
+        help="MongoDB database name (overrides MONGO_DB env / settings)",
+    )
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    asyncio.run(main(force=args.force))
+    if args.db_name:
+        os.environ["MONGO_DB"] = args.db_name
+        settings.MONGO_DB = args.db_name
+    asyncio.run(main(force=args.force, db_name=args.db_name))

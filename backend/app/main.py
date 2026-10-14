@@ -15,7 +15,9 @@ from app.routers import (
     exams,
     materials,
     notifications,
+    public,
     requests,
+    setup,
 )
 
 setup_logging()
@@ -36,6 +38,8 @@ app.add_middleware(
 
 register_exception_handlers(app)
 
+app.include_router(public.router)
+app.include_router(setup.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(classes.router)

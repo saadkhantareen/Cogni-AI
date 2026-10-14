@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.main import app
-from tests.helpers import DEMO_PASSWORD, login_as, upload_material
+from tests.helpers import WORLD_PASSWORD, login_as, upload_material
 
 pytestmark = pytest.mark.api
 
@@ -155,7 +155,17 @@ def test_all_openapi_routes_reachable(client, hit_routes):
         headers=admin,
     )
     assert ju.status_code == 201
-    join_student_id = ju.json()["id"]
+    ju_body = ju.json()
+    join_student_id = ju_body.get("user", ju_body)["id"]
+    temp = ju_body["temporary_password"]
+    scoped = client.post("/api/auth/login", json={"email": join_email, "password": temp})
+    assert scoped.status_code == 200
+    changed = client.post(
+        "/api/auth/change-password",
+        json={"current_password": temp, "new_password": WORLD_PASSWORD},
+        headers={"Authorization": f"Bearer {scoped.json()['access_token']}"},
+    )
+    assert changed.status_code == 200, changed.text
     join_h = login_as(client, join_email)
 
     # Notification id for mark-read
@@ -215,15 +225,40 @@ def test_all_openapi_routes_reachable(client, hit_routes):
         },
         headers=admin,
     )
-    new_user_id = new_user.json()["id"] if new_user.status_code == 201 else some_user_id
+    if new_user.status_code == 201:
+        body = new_user.json()
+        new_user_id = body.get("user", body).get("id", some_user_id)
+    else:
+        new_user_id = some_user_id
 
     # Explicit ordered calls — ensure each OpenAPI path is hit at least once.
     planned: list[tuple[str, str, dict | None, dict | None]] = [
         ("GET", "/api/health", None, None),
-        ("POST", "/api/auth/login", None, {"email": "admin@cogni.pk", "password": DEMO_PASSWORD}),
+        ("GET", "/api/public/config", None, None),
+        ("POST", "/api/auth/login", None, {"email": "admin@cogni.pk", "password": WORLD_PASSWORD}),
+        ("POST", "/api/auth/forgot", None, {"email": "admin@cogni.pk"}),
+        ("POST", "/api/auth/register", None, {
+            "name": f"Cov Reg {tag}",
+            "email": f"cov.reg.{tag}@school.edu",
+            "password": "Strong-Passw0rd!",
+        }),
+        ("POST", "/api/auth/reset", None, {"token": "not-a-real-token", "new_password": "Strong-Passw0rd!"}),
+        # needs_setup is false on seeded DB → expect 409
+        ("POST", "/api/setup/admin", None, {
+            "name": "Setup",
+            "email": f"setup.{tag}@school.edu",
+            "password": "Strong-Passw0rd!",
+            "institution_name": "X",
+            "current_term": "T1",
+        }),
         ("GET", "/api/auth/me", admin, None),
-        ("GET", "/api/auth/demo-accounts", None, None),
         ("GET", "/api/admin/users", admin, None),
+        ("GET", "/api/admin/onboarding", admin, None),
+        ("GET", "/api/admin/llm-status", admin, None),
+        ("POST", "/api/auth/change-password", admin, {
+            "current_password": WORLD_PASSWORD,
+            "new_password": WORLD_PASSWORD,
+        }),
         ("POST", "/api/admin/users", admin, {
             "name": f"Cov Extra {tag}",
             "email": f"cov.extra.{tag}@umt.edu.pk",

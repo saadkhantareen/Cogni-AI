@@ -1,3 +1,4 @@
+from app.core.config import settings
 from app.core.db import get_db, to_out
 
 ROLES = ("admin", "hod", "teacher", "student")
@@ -22,4 +23,31 @@ async def summary() -> dict:
         "classes": classes_count,
         "papers_by_status": papers_by_status,
         "recent_activity": recent,
+    }
+
+
+async def onboarding() -> dict:
+    db = get_db()
+    has_dept = await db.departments.count_documents({}) > 0
+    has_teacher = await db.users.count_documents({"role": "teacher"}) > 0
+    has_head = await db.departments.count_documents({"hod_id": {"$ne": None}}) > 0
+    has_class = await db.classes.count_documents({}) > 0
+    has_student_joined = await db.classes.count_documents({"student_ids.0": {"$exists": True}}) > 0
+    has_published = await db.exams.count_documents({"status": "published"}) > 0
+    items = [
+        {"key": "department", "done": has_dept, "label": "Create a department", "href": "/app/admin/departments"},
+        {"key": "teacher", "done": has_teacher, "label": "Add a teacher", "href": "/app/admin/users/new"},
+        {"key": "head", "done": has_head, "label": "Assign a department head", "href": "/app/admin/departments"},
+        {"key": "class", "done": has_class, "label": "A class exists", "href": "/app/admin"},
+        {"key": "student", "done": has_student_joined, "label": "A student has joined a class", "href": "/app/admin/users"},
+        {"key": "exam", "done": has_published, "label": "An exam has been published", "href": "/app/admin"},
+    ]
+    return {"items": items, "complete": all(i["done"] for i in items)}
+
+
+async def llm_status() -> dict:
+    return {
+        "provider": settings.LLM_PROVIDER,
+        "model": settings.LLM_MODEL or None,
+        "configured": bool(settings.LLM_API_KEY) or settings.LLM_PROVIDER == "mock",
     }

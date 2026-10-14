@@ -34,17 +34,19 @@ A MongoDB server must be reachable at `MONGO_URI` (defaults to
 | `MAX_UPLOAD_MB` | `25` | Default material-upload cap; overridable at runtime via `PUT /api/admin/settings`. |
 | `MAX_REQUEST_MB` | `50` | Hard ceiling on any request body (defence in depth, checked before the body is read). Keep this at or above `MAX_UPLOAD_MB`. |
 
-## Seed data
+## Test fixture world
 
 ```bash
-python -m app.seed            # refuses unless MONGO_DB ends with _dev/_demo
-python -m app.seed --force    # seed any database name
+python -m tests.support.world            # refuses unless MONGO_DB ends with _dev/_demo
+python -m tests.support.world --force    # load into any database name
+python -m tests.support.world --db cogni_dev
 ```
 
-This drops and recreates every collection with the same demo world as the
-v7 prototype (3 departments, 17 users, 5 classes, 5 materials, 6 exams, a
-handful of attempts/requests/notifications). Every seeded user's password is
-`demo123`.
+Lives in `tests/support/world.py` (not part of the app package). Drops and
+recreates every collection with the same demo world as the v7 prototype (3
+departments, 17 users, 5 classes, 5 materials, 6 exams, a handful of
+attempts/requests/notifications). Every fixture-world user's password is
+`Test-Passw0rd!`.
 
 ## Running
 
@@ -77,7 +79,7 @@ pytest
 
 Tests spin up a FastAPI `TestClient` per test file against
 `TEST_MONGO_DB` (default `cogni_test_dev`), reseeding it from scratch each
-time via `app.seed.main(force=False)`. `LLM_PROVIDER` should stay `mock`
+time via `tests.support.world.main(force=False)`. `LLM_PROVIDER` should stay `mock`
 when running tests (the default) so grading/generation stays deterministic.
 
 ## End-to-end smoke test
@@ -86,7 +88,7 @@ Exercises the full teacher → HOD → teacher → student loop plus every role'
 dashboard over real HTTP, against a running server:
 
 ```bash
-LLM_PROVIDER=mock MONGO_DB=cogni_e2e_dev python -m app.seed
+LLM_PROVIDER=mock MONGO_DB=cogni_e2e_dev python -m tests.support.world
 LLM_PROVIDER=mock MONGO_DB=cogni_e2e_dev uvicorn app.main:app --port 8000 &
 python scripts/e2e_smoke.py
 ```

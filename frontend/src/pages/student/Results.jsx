@@ -7,7 +7,6 @@ import PageTop from '../../components/PageTop'
 import {
   attemptPercent,
   attemptTotal,
-  buildUserDirectory,
   examMaxMarks,
   formatTeacherName,
 } from '../../utils/student'
@@ -26,14 +25,12 @@ export default function Results({ classId = null }) {
     setLoading(true)
     setError(null)
     try {
-      const [dash, ats, xs, cls, demos] = await Promise.all([
+      const [dash, ats, xs, cls] = await Promise.all([
         api.getStudentDashboard(),
         api.listMyAttempts(),
         api.listExams(classId ? { class_id: classId } : {}).catch(() => []),
         api.listClasses().catch(() => []),
-        api.getDemoAccounts().catch(() => []),
       ])
-      const teachers = buildUserDirectory(demos)
       const classById = new Map((cls || []).map((c) => [c.id, c]))
       const examById = new Map((xs || []).map((x) => [x.id, x]))
       const attemptById = new Map((ats || []).map((a) => [a.id, a]))
@@ -65,7 +62,7 @@ export default function Results({ classId = null }) {
           examId: r.exam_id,
           title: r.exam_title || exam?.title || 'Exam',
           classCode: c?.code || '—',
-          teacher: formatTeacherName(teachers[exam?.teacher_id]?.name),
+          teacher: formatTeacherName(),
           total,
           max,
           percent: pct,
@@ -83,7 +80,7 @@ export default function Results({ classId = null }) {
           examId: exam.id,
           title: exam.title,
           classCode: c?.code || '—',
-          teacher: formatTeacherName(teachers[exam.teacher_id]?.name),
+          teacher: formatTeacherName(),
           total: attemptTotal(a, exam),
           max: examMaxMarks(exam),
           percent: attemptPercent(a, exam),

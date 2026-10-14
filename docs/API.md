@@ -6,13 +6,18 @@ error response uses the uniform shape `{"detail": "...", "code": "..."}`.
 | Method | Path | Role(s) | Request | Response |
 |--------|------|---------|---------|----------|
 | GET | /api/health | public | — | `{status}` |
-| POST | /api/auth/login | public | `{email, password}` | `{access_token, token_type, user{id,name,email,role,dept_id}}`. 401 `UNAUTHORIZED` on wrong email/password (generic message). 403 `FORBIDDEN` if the account is inactive. |
-| GET | /api/auth/me | any authenticated user | — (Bearer token) | `{id,name,email,role,dept_id,status}` |
-| GET | /api/auth/demo-accounts | public | — | `[{id,name,email,role,dept_name,status}]` — the first 3 users of each role, in insertion order (12 total), for the login page's click-to-sign-in list. Never includes password hashes. |
+| GET | /api/public/config | public | — | `{needs_setup, institution_name, current_term, student_signup_enabled}` |
+| POST | /api/setup/admin | public (only while empty) | `{name,email,password,institution_name?,current_term?}` | `LoginResponse`, 201. 409 after first admin exists. |
+| POST | /api/auth/login | public | `{email, password}` | `{access_token, token_type, scope?, user{…,dept_name,institution_name,current_term,must_change_password}}`. `scope=change_password` when forced. 401 generic. 429 lockout. |
+| GET | /api/auth/me | authenticated | — | UserOut (+ dept_name, institution_name, current_term). 403 if scoped change-password token. |
+| POST | /api/auth/change-password | authenticated | `{current_password,new_password}` | `LoginResponse` (full session). |
+| POST | /api/auth/register | public | `{name,email,password}` | Student-only signup, 201. Honours signup settings / domain allowlist. |
+| POST | /api/auth/forgot | public | `{email}` | 202 always. |
+| POST | /api/auth/reset | public | `{token,new_password}` | 204. |
 | GET | /api/admin/users | admin | query `?role=&q=` (both optional; `q` matches name or email, case-insensitive) | `[UserOut]` |
-| POST | /api/admin/users | admin | `{name, email, role, dept_id}` (`dept_id` required unless `role=admin`, which forces it to `null`) | `UserOut`, 201. 409 `CONFLICT` on duplicate email. 400 `BAD_REQUEST` if a non-admin role has no `dept_id`. If the new user is `hod` and their department has no head, they become it (notified); otherwise, if the department has a head and the new user isn't a student, the head is notified. |
+| POST | /api/admin/users | admin | `{name, email, role, dept_id}` (`dept_id` required unless `role=admin`, which forces it to `null`) | `{user: UserOut, temporary_password}`, 201. Temp password shown once; `must_change_password=true`. |
 | PATCH | /api/admin/users/{id} | admin | `{role?, dept_id?, status?}` (only provided fields change) | `UserOut`. Moving a user away from `hod` clears their department's `hod_id`. Setting `role=hod` makes them head of their (possibly new) department if it has none, notifying them. Setting `role=admin` forces `dept_id` to `null`. A role change notifies the user. |
-| POST | /api/admin/users/{id}/reset-password | admin | — | 204. Password becomes `demo123`; the user is notified. |
+| POST | /api/admin/users/{id}/reset-password | admin | — | `{temporary_password}`. User must change password; prior tokens invalidated via `token_version`. |
 | GET | /api/admin/departments | admin | — | `[DepartmentOut]` |
 | POST | /api/admin/departments | admin | `{code, name}` | `DepartmentOut`, 201. 409 `CONFLICT` on duplicate code. `hod_id` starts `null`; policy defaults to `{min_clo:2, higher_order_pct:25, max_repeats:2}`. |
 | PATCH | /api/admin/departments/{id} | admin | `{hod_id}` (nullable) | `DepartmentOut`. Promoting a user makes their role `hod` (notified); demoting the previous head makes them a `teacher` (notified). |

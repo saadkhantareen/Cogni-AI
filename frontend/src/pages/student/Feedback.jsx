@@ -8,7 +8,6 @@ import PageTop from '../../components/PageTop'
 import ScoreBar from '../../components/ScoreBar'
 import {
   attemptTotal,
-  buildUserDirectory,
   effectiveScore,
   examMaxMarks,
   formatTeacherName,
@@ -113,8 +112,7 @@ export default function Feedback() {
         } catch {
           setCls(null)
         }
-        const demos = await api.getDemoAccounts().catch(() => [])
-        setTeacherName(formatTeacherName(buildUserDirectory(demos)[x.teacher_id]?.name))
+        setTeacherName(formatTeacherName())
       }
     } catch (err) {
       setError(err)

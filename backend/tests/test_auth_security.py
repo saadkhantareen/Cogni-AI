@@ -12,9 +12,9 @@ from pymongo import AsyncMongoClient
 
 from app.core.config import settings
 from app.core.security import hash_password
-from tests.helpers import DEMO_PASSWORD, login_as
+from tests.helpers import WORLD_PASSWORD, login_as
 
-# First 3 of each role in seed insertion order (see app/seed.py + demo-accounts).
+# First 3 of each role in fixture-world insertion order (tests/support/world.py).
 EXPECTED_DEMO_EMAILS = {
     "admin@cogni.pk",
     "imran.butt@cogni.pk",
@@ -52,34 +52,55 @@ def _b64url(data: dict) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-# No student self-signup endpoint exists; do not invent one.
+@pytest.mark.api
 @pytest.mark.security
-@pytest.mark.skip(reason="No student self-signup endpoint; do not invent one.")
-def test_student_self_signup_not_available():
-    pass
+def test_student_self_signup_enabled(client):
+    resp = client.post(
+        "/api/auth/register",
+        json={
+            "name": "New Student",
+            "email": "new.student@school.edu",
+            "password": "Strong-Passw0rd!",
+            "role": "admin",  # must be ignored
+            "dept_id": "whatever",
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["user"]["role"] == "student"
+    assert body["user"]["dept_id"] is None
+    assert "password" not in body["user"]
+    assert "password_hash" not in body["user"]
 
 
 @pytest.mark.api
 @pytest.mark.security
-def test_login_success_for_all_demo_accounts(client):
-    resp = client.get("/api/auth/demo-accounts")
-    assert resp.status_code == 200
-    accounts = resp.json()
-    assert len(accounts) == 12
-    emails = {a["email"] for a in accounts}
-    assert emails == EXPECTED_DEMO_EMAILS
+def test_student_self_signup_duplicate_generic(client):
+    payload = {
+        "name": "Dup",
+        "email": "hamza.ali@umt.edu.pk",
+        "password": "Strong-Passw0rd!",
+    }
+    resp = client.post("/api/auth/register", json=payload)
+    assert resp.status_code == 409
+    assert "already" not in resp.json()["detail"].lower() or True  # generic message
+    assert resp.json()["detail"] == "Could not create that account."
 
-    for account in accounts:
+
+@pytest.mark.api
+@pytest.mark.security
+def test_login_success_for_fixture_world_accounts(client):
+    for email in EXPECTED_DEMO_EMAILS:
         login = client.post(
             "/api/auth/login",
-            json={"email": account["email"], "password": DEMO_PASSWORD},
+            json={"email": email, "password": WORLD_PASSWORD},
         )
-        assert login.status_code == 200, f"{account['email']}: {login.text}"
+        assert login.status_code == 200, f"{email}: {login.text}"
         body = login.json()
-        assert body["user"]["email"] == account["email"]
-        assert body["user"]["role"] == account["role"]
+        assert body["user"]["email"] == email
         assert body["token_type"] == "bearer"
         assert body["access_token"]
+        assert "dept_name" in body["user"] or body["user"]["role"] == "admin"
 
 
 @pytest.mark.api
@@ -91,7 +112,7 @@ def test_login_wrong_password_and_unknown_email_same_401(client):
     )
     unknown = client.post(
         "/api/auth/login",
-        json={"email": "nobody@cogni.pk", "password": DEMO_PASSWORD},
+        json={"email": "nobody@cogni.pk", "password": WORLD_PASSWORD},
     )
     assert wrong_pw.status_code == 401
     assert unknown.status_code == 401
@@ -108,7 +129,7 @@ async def test_login_inactive_account_is_403(client):
     await _set_user_status("hamza.ali@umt.edu.pk", "inactive")
     resp = client.post(
         "/api/auth/login",
-        json={"email": "hamza.ali@umt.edu.pk", "password": DEMO_PASSWORD},
+        json={"email": "hamza.ali@umt.edu.pk", "password": WORLD_PASSWORD},
     )
     assert resp.status_code == 403
     assert resp.json()["code"] == "FORBIDDEN"
@@ -122,9 +143,9 @@ async def test_login_inactive_account_is_403(client):
     [
         {},
         {"email": "admin@cogni.pk"},
-        {"password": DEMO_PASSWORD},
-        {"email": 123, "password": DEMO_PASSWORD},
-        {"email": None, "password": DEMO_PASSWORD},
+        {"password": WORLD_PASSWORD},
+        {"email": 123, "password": WORLD_PASSWORD},
+        {"email": None, "password": WORLD_PASSWORD},
     ],
 )
 def test_login_missing_or_malformed_fields(client, body):
@@ -139,7 +160,7 @@ def test_login_missing_or_malformed_fields(client, body):
 def test_token_claims_sub_role_exp(client):
     login = client.post(
         "/api/auth/login",
-        json={"email": "ayesha.khan@umt.edu.pk", "password": DEMO_PASSWORD},
+        json={"email": "ayesha.khan@umt.edu.pk", "password": WORLD_PASSWORD},
     )
     assert login.status_code == 200
     token = login.json()["access_token"]
@@ -166,7 +187,7 @@ def test_token_claims_sub_role_exp(client):
 def test_invalid_tokens_rejected_on_me(client, token_factory):
     login = client.post(
         "/api/auth/login",
-        json={"email": "admin@cogni.pk", "password": DEMO_PASSWORD},
+        json={"email": "admin@cogni.pk", "password": WORLD_PASSWORD},
     )
     valid = login.json()["access_token"]
     user_id = login.json()["user"]["id"]
@@ -229,7 +250,7 @@ def test_me_returns_user_without_password_hash(client):
 
 @pytest.mark.api
 @pytest.mark.security
-async def test_admin_reset_password_restores_demo123(client):
+async def test_admin_reset_password_issues_temporary_password(client):
     email = "sana.iqbal@umt.edu.pk"
     custom = "CustomPass!99"
     await _set_password_hash(email, custom)
@@ -240,7 +261,7 @@ async def test_admin_reset_password_restores_demo123(client):
     )
     assert (
         client.post(
-            "/api/auth/login", json={"email": email, "password": DEMO_PASSWORD}
+            "/api/auth/login", json={"email": email, "password": WORLD_PASSWORD}
         ).status_code
         == 401
     )
@@ -252,18 +273,16 @@ async def test_admin_reset_password_restores_demo123(client):
         f"/api/admin/users/{user_id}/reset-password",
         headers=login_as(client, "admin"),
     )
-    assert reset.status_code == 204
+    assert reset.status_code == 200
+    temp = reset.json()["temporary_password"]
 
     assert (
         client.post("/api/auth/login", json={"email": email, "password": custom}).status_code
         == 401
     )
-    assert (
-        client.post(
-            "/api/auth/login", json={"email": email, "password": DEMO_PASSWORD}
-        ).status_code
-        == 200
-    )
+    ok = client.post("/api/auth/login", json={"email": email, "password": temp})
+    assert ok.status_code == 200
+    assert ok.json().get("scope") == "change_password"
 
 
 @pytest.mark.api
@@ -271,7 +290,7 @@ async def test_admin_reset_password_restores_demo123(client):
 async def test_deactivated_users_existing_token_stops_on_me(client):
     login = client.post(
         "/api/auth/login",
-        json={"email": "bilal.ahmed@umt.edu.pk", "password": DEMO_PASSWORD},
+        json={"email": "bilal.ahmed@umt.edu.pk", "password": WORLD_PASSWORD},
     )
     assert login.status_code == 200
     headers = {"Authorization": f"Bearer {login.json()['access_token']}"}

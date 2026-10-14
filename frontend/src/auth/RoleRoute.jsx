@@ -6,7 +6,7 @@ import { ROLE_HOME, useAuth } from './AuthContext'
  * Cross-role URLs redirect to that user's role home.
  */
 export default function RoleRoute({ roles, children }) {
-  const { user, loading } = useAuth()
+  const { user, loading, mustChangePassword } = useAuth()
   const location = useLocation()
 
   if (loading) {
@@ -19,6 +19,10 @@ export default function RoleRoute({ roles, children }) {
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  if (mustChangePassword) {
+    return <Navigate to="/change-password" replace state={{ from: location.pathname }} />
   }
 
   if (roles && roles.length && !roles.includes(user.role)) {

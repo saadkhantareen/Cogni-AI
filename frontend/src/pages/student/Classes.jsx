@@ -5,12 +5,10 @@ import EmptyState from '../../components/EmptyState'
 import PageTop from '../../components/PageTop'
 import ClassCard from '../../components/student/ClassCard'
 import JoinClass from '../../components/student/JoinClass'
-import { buildUserDirectory } from '../../utils/student'
 
 export default function Classes() {
   const [classes, setClasses] = useState([])
   const [matCounts, setMatCounts] = useState({})
-  const [teachers, setTeachers] = useState({})
   const [notesByClass, setNotesByClass] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -19,13 +17,11 @@ export default function Classes() {
     setLoading(true)
     setError(null)
     try {
-      const [cls, demos, dash] = await Promise.all([
+      const [cls, dash] = await Promise.all([
         api.listClasses(),
-        api.getDemoAccounts().catch(() => []),
         api.getStudentDashboard().catch(() => null),
       ])
       setClasses(cls || [])
-      setTeachers(buildUserDirectory(demos))
 
       const counts = {}
       const notes = {}
@@ -77,7 +73,7 @@ export default function Classes() {
               index={i}
               notes={notesByClass[c.id] || []}
               materialCount={matCounts[c.id] ?? 0}
-              teacherName={teachers[c.teacher_id]?.name}
+              teacherName={null}
             />
           ))}
         </div>

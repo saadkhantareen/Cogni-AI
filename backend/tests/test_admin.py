@@ -5,13 +5,13 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.main import app
-from app.seed import main as seed_main
+from tests.helpers import WORLD_PASSWORD, WORLD_PASSWORD
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
 
 
-def _token(client, email, password="demo123"):
+def _token(client, email, password=WORLD_PASSWORD):
     resp = client.post("/api/auth/login", json={"email": email, "password": password})
     return resp.json()["access_token"]
 
@@ -129,19 +129,23 @@ def test_admin_dept_id_forced_null(client):
 
 
 def test_reset_password_notifies_user(client):
-    student_id = client.get("/api/auth/me", headers=_auth(client, STUDENT_EMAIL)).json()["id"]
-    before = client.get("/api/notifications", headers=_auth(client, STUDENT_EMAIL)).json()
+    student_headers = _auth(client, STUDENT_EMAIL)
+    student_id = client.get("/api/auth/me", headers=student_headers).json()["id"]
     resp = client.post(
         f"/api/admin/users/{student_id}/reset-password", headers=_auth(client, ADMIN_EMAIL)
     )
-    assert resp.status_code == 204
-    after = client.get("/api/notifications", headers=_auth(client, STUDENT_EMAIL)).json()
-    assert after["unread_count"] > before["unread_count"]
+    assert resp.status_code == 200
+    temp = resp.json()["temporary_password"]
+    activity = client.get("/api/admin/activity", headers=_auth(client, ADMIN_EMAIL)).json()
+    assert any("Reset password" in a["text"] for a in activity)
+    # Prior JWT is invalidated via token_version bump.
+    assert client.get("/api/auth/me", headers=student_headers).status_code == 401
 
     login_resp = client.post(
-        "/api/auth/login", json={"email": STUDENT_EMAIL, "password": "demo123"}
+        "/api/auth/login", json={"email": STUDENT_EMAIL, "password": temp}
     )
     assert login_resp.status_code == 200
+    assert login_resp.json().get("scope") == "change_password"
 
 
 def test_assign_hod_promotes_and_demotes(client):

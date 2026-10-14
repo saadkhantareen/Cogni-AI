@@ -5,11 +5,7 @@ import { ShellError, ShellLoading } from '../../components/AppShell'
 import EmptyState from '../../components/EmptyState'
 import ClassCard from '../../components/student/ClassCard'
 import JoinClass from '../../components/student/JoinClass'
-import {
-  buildUserDirectory,
-  greetingLine,
-  todayLong,
-} from '../../utils/student'
+import { greetingLine, todayLong } from '../../utils/student'
 
 /** Notes from live exams + released results (matched by exam_id per class). */
 function notesForClass(cls, data, examIdsByClass) {
@@ -31,7 +27,6 @@ export default function Dashboard() {
   const { user } = useAuth()
   const [data, setData] = useState(null)
   const [matCounts, setMatCounts] = useState({})
-  const [teachers, setTeachers] = useState({})
   const [examIdsByClass, setExamIdsByClass] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -40,12 +35,8 @@ export default function Dashboard() {
     setLoading(true)
     setError(null)
     try {
-      const [dash, demos] = await Promise.all([
-        api.getStudentDashboard(),
-        api.getDemoAccounts().catch(() => []),
-      ])
+      const dash = await api.getStudentDashboard()
       setData(dash)
-      setTeachers(buildUserDirectory(demos))
 
       const classes = dash.classes || []
       const counts = {}
@@ -108,7 +99,7 @@ export default function Dashboard() {
               index={i}
               notes={notesForClass(c, data, examIdsByClass)}
               materialCount={matCounts[c.id] ?? 0}
-              teacherName={teachers[c.teacher_id]?.name}
+              teacherName={null}
             />
           ))}
         </div>

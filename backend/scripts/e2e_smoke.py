@@ -3,7 +3,7 @@ loop plus every role's dashboard against a running server, over real HTTP.
 
 Usage:
     cd backend
-    LLM_PROVIDER=mock MONGO_DB=cogni_e2e python -m app.seed
+    LLM_PROVIDER=mock MONGO_DB=cogni_e2e python -m tests.support.world --force
     LLM_PROVIDER=mock MONGO_DB=cogni_e2e uvicorn app.main:app --port 8000 &
     python scripts/e2e_smoke.py
 
@@ -16,13 +16,15 @@ import time
 
 import httpx
 
+from tests.support.world import TEST_PASSWORD
+
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 
 ADMIN = "admin@cogni.pk"
 TEACHER = "ayesha.khan@umt.edu.pk"  # dept cs, owns CS-201-A
 HOD = "tariq.mehmood@umt.edu.pk"  # heads dept cs
 STUDENT = "hamza.ali@umt.edu.pk"  # enrolled in CS-201-A, dept cs
-PASSWORD = "demo123"
+PASSWORD = TEST_PASSWORD
 
 failures: list[str] = []
 

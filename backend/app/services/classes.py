@@ -53,6 +53,9 @@ async def create_class(
             break
         join_code = _generate_join_code(code)
 
+    from app.services import settings as settings_service
+
+    term = (await settings_service.get_settings()).get("current_term") or ""
     doc = {
         "code": code,
         "name": name,
@@ -61,7 +64,7 @@ async def create_class(
         "student_ids": [],
         "join_code": join_code,
         "clos": [],
-        "section": "Fall 2026",
+        "section": term,
     }
     result = await db.classes.insert_one(doc)
     doc["_id"] = result.inserted_id

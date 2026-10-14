@@ -45,21 +45,16 @@ export default function ClassDetail() {
     setLoading(true)
     setError(null)
     try {
-      const [c, xs, mats, demos, allClasses] = await Promise.all([
+      const [c, xs, mats, allClasses] = await Promise.all([
         api.getClass(id),
         api.listExams({ class_id: id }),
         api.listMaterials(id),
-        api.getDemoAccounts().catch(() => []),
         api.listClasses().catch(() => []),
       ])
       setCls(c)
       setExams(xs)
       setMaterials(mats)
-      const dir = {}
-      ;(demos || []).forEach((u) => {
-        dir[u.id] = { name: u.name, email: u.email }
-      })
-      setDirectory(dir)
+      setDirectory({})
       const idx = (allClasses || []).findIndex((x) => x.id === id)
       setClassIndex(idx >= 0 ? idx : 0)
     } catch (err) {
@@ -330,7 +325,7 @@ export default function ClassDetail() {
               <input
                 id="add-email"
                 type="email"
-                placeholder="student@umt.edu.pk"
+                placeholder="name@school.edu"
                 value={addEmail}
                 disabled={adding}
                 onChange={(e) => setAddEmail(e.target.value)}
@@ -350,8 +345,8 @@ export default function ClassDetail() {
             </button>
           </div>
           <p className="small" style={{ margin: '8px 0 0' }}>
-            Try <span className="mono">zainab.fatima@umt.edu.pk</span>, or share join code{' '}
-            <span className="chip">{cls.join_code}</span> with students.
+            Share join code <span className="chip">{cls.join_code}</span> with students so they can
+            join this class.
           </p>
         </div>
       </div>

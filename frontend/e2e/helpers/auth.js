@@ -1,5 +1,5 @@
-/** Demo accounts matching backend seed (password always demo123). */
-export const DEMO = {
+/** Fixture-world accounts from tests/support/world.py */
+export const ACCOUNTS = {
   admin: { email: 'admin@cogni.pk', roleLabel: 'Admin', home: '/app/admin' },
   hod: {
     email: 'tariq.mehmood@umt.edu.pk',
@@ -18,11 +18,15 @@ export const DEMO = {
   },
 }
 
-export const DEMO_PASSWORD = 'demo123'
+/** @deprecated use ACCOUNTS */
+export const DEMO = ACCOUNTS
+
+export const WORLD_PASSWORD = 'Test-Passw0rd!'
+/** @deprecated use WORLD_PASSWORD */
+export const DEMO_PASSWORD = WORLD_PASSWORD
 
 /**
  * Wipe JWT and land on a fresh login screen.
- * Clear storage on a blank document first so AuthContext never hydrates an old user.
  */
 export async function clearSession(page) {
   await page.goto('about:blank')
@@ -30,39 +34,33 @@ export async function clearSession(page) {
     try {
       localStorage.clear()
     } catch {
-      /* about:blank may block storage in some browsers — ignore */
+      /* ignore */
     }
   })
   await page.goto('/login')
   await page.evaluate(() => {
     localStorage.removeItem('cogni-token')
   })
-  // If a token was restored before clear, force one more load
   if (await page.getByRole('heading', { name: 'Sign in' }).count() === 0) {
     await page.evaluate(() => localStorage.removeItem('cogni-token'))
     await page.goto('/login')
   }
   await page.getByRole('heading', { name: 'Sign in' }).waitFor({ timeout: 20_000 })
-  await page
-    .getByRole('button', { name: /Sign in as /i })
-    .first()
-    .waitFor({ state: 'visible', timeout: 20_000 })
 }
 
 /**
- * Sign in via demo-account button on /login.
+ * Sign in via email/password on /login.
  * @param {import('@playwright/test').Page} page
  * @param {'admin'|'hod'|'teacher'|'student'} role
  */
 export async function loginAs(page, role) {
-  const acct = DEMO[role]
+  const acct = ACCOUNTS[role]
   if (!acct) throw new Error(`Unknown role: ${role}`)
 
   await clearSession(page)
-
-  const match = page.locator('button.acct').filter({ hasText: acct.email })
-  await match.first().waitFor({ state: 'visible', timeout: 20_000 })
-  await match.first().click()
+  await page.locator('#l-email').fill(acct.email)
+  await page.locator('#l-pw').fill(WORLD_PASSWORD)
+  await page.locator('#login-main').getByRole('button', { name: 'Sign in', exact: true }).click()
 
   const rateLimited = page.getByText(/Too many requests/i)
   try {
@@ -82,39 +80,23 @@ export async function loginAs(page, role) {
 
 /**
  * Manual email/password login.
- * @param {import('@playwright/test').Page} page
- * @param {string} email
- * @param {string} password
  */
 export async function loginWithPassword(page, email, password) {
   await clearSession(page)
   await page.locator('#l-email').fill(email)
   await page.locator('#l-pw').fill(password)
-  await page.locator('#login-main > div').getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.locator('#login-main').getByRole('button', { name: 'Sign in', exact: true }).click()
 }
 
 /**
- * Switch demo account from the AppShell account menu.
- * @param {import('@playwright/test').Page} page
- * @param {string} email
+ * @deprecated Demo switcher removed from AppShell.
  */
-export async function switchDemo(page, email) {
-  const target = Object.values(DEMO).find((a) => a.email === email)
-  const home = target?.home || '/app/'
-
-  await page.getByRole('button', { name: /Account menu for/i }).click()
-  await page.getByLabel('Switch demo account').waitFor()
-  await page.locator('#switch').selectOption(email)
-  const prefix = home.replace(/\/$/, '')
-  await page.waitForURL((url) => url.pathname.startsWith(prefix), {
-    timeout: 30_000,
-  })
+export async function switchDemo() {
+  throw new Error('Demo account switcher was removed; sign out and loginAs instead.')
 }
 
 /**
  * Confirm the in-app modal (useConfirm / openModal).
- * @param {import('@playwright/test').Page} page
- * @param {string|RegExp} okName
  */
 export async function confirmModal(page, okName) {
   const dialog = page.locator('#modal-box, .modal').first()

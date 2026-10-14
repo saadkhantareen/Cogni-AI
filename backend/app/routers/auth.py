@@ -1,14 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
-from app.core.db import get_db
 from app.core.deps import CurrentUser, get_current_user
 from app.core.ratelimit import check_login_rate_limit
-from app.core.security import create_token
-from app.schemas.auth import DemoAccountOut, LoginRequest, LoginResponse, TokenUser
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    ForgotRequest,
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    ResetRequest,
+    TokenUser,
+)
 from app.schemas.users import UserOut
 from app.services import auth as auth_service
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _token_user(fields: dict) -> TokenUser:
+    return TokenUser(**{k: fields[k] for k in TokenUser.model_fields if k in fields})
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -17,46 +27,55 @@ async def login(payload: LoginRequest, request: Request):
     try:
         user = await auth_service.authenticate(payload.email, payload.password)
     except auth_service.AuthError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.detail)
+        raise HTTPException(status_code=e.status_code, detail=e.detail, headers=e.headers or None)
 
-    token = create_token(str(user["_id"]), user["role"])
-    return LoginResponse(
-        access_token=token,
-        user=TokenUser(
-            id=str(user["_id"]),
-            name=user["name"],
-            email=user["email"],
-            role=user["role"],
-            dept_id=user.get("dept_id"),
-        ),
-    )
+    token, scope = auth_service.issue_tokens_for(user)
+    fields = await auth_service.user_public_fields(user)
+    return LoginResponse(access_token=token, scope=scope, user=_token_user(fields))
 
 
 @router.get("/me", response_model=UserOut)
 async def me(current: CurrentUser = Depends(get_current_user)):
-    return UserOut(
-        id=current.id,
-        name=current.name,
-        email=current.email,
-        role=current.role,
-        dept_id=current.dept_id,
-        status=current.status,
-    )
-
-
-@router.get("/demo-accounts", response_model=list[DemoAccountOut])
-async def demo_accounts():
-    db = get_db()
-    depts = {str(d["_id"]): d["name"] async for d in db.departments.find()}
-    users = await auth_service.list_demo_accounts()
-    return [
-        DemoAccountOut(
-            id=str(u["_id"]),
-            name=u["name"],
-            email=u["email"],
-            role=u["role"],
-            dept_name=depts.get(u.get("dept_id")),
-            status=u["status"],
+    if current.scope == "change_password":
+        raise HTTPException(
+            status_code=403, detail="Change your password before continuing."
         )
-        for u in users
-    ]
+    from app.core.db import get_db, oid
+
+    doc = await get_db().users.find_one({"_id": oid(current.id)})
+    fields = await auth_service.user_public_fields(doc)
+    return UserOut(**fields)
+
+
+@router.post("/change-password", response_model=LoginResponse)
+async def change_password(
+    payload: ChangePasswordRequest, current: CurrentUser = Depends(get_current_user)
+):
+    user = await auth_service.change_password(
+        current.id, payload.current_password, payload.new_password
+    )
+    token, scope = auth_service.issue_tokens_for(user)
+    fields = await auth_service.user_public_fields(user)
+    return LoginResponse(access_token=token, scope=scope, user=_token_user(fields))
+
+
+@router.post("/register", response_model=LoginResponse, status_code=201)
+async def register(payload: RegisterRequest, request: Request):
+    check_login_rate_limit(request)
+    user = await auth_service.register_student(payload.name, payload.email, payload.password)
+    token, scope = auth_service.issue_tokens_for(user)
+    fields = await auth_service.user_public_fields(user)
+    return LoginResponse(access_token=token, scope=scope, user=_token_user(fields))
+
+
+@router.post("/forgot", status_code=202)
+async def forgot(payload: ForgotRequest, request: Request):
+    check_login_rate_limit(request)
+    await auth_service.forgot_password(payload.email)
+    return {"status": "ok"}
+
+
+@router.post("/reset", status_code=204)
+async def reset(payload: ResetRequest):
+    await auth_service.reset_password_with_token(payload.token, payload.new_password)
+    return Response(status_code=204)

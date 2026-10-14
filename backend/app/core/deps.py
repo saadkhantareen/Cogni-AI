@@ -21,6 +21,12 @@ class CurrentUser(BaseModel):
     role: Role
     dept_id: str | None
     status: UserStatus
+    must_change_password: bool = False
+    token_version: int = 0
+    scope: str | None = None
+    dept_name: str | None = None
+    institution_name: str | None = None
+    current_term: str | None = None
 
 
 async def get_current_user(
@@ -31,7 +37,9 @@ async def get_current_user(
     try:
         payload = decode_token(credentials.credentials)
         user_oid = ObjectId(payload["sub"])
-    except (PyJWTError, InvalidId, TypeError, KeyError):
+        token_tv = int(payload.get("tv", 0))
+        scope = payload.get("scope")
+    except (PyJWTError, InvalidId, TypeError, KeyError, ValueError):
         raise HTTPException(status_code=401, detail=AUTH_ERROR)
 
     db = get_db()
@@ -43,6 +51,23 @@ async def get_current_user(
             status_code=403,
             detail="This account is deactivated. Ask an admin to reactivate it.",
         )
+    if int(doc.get("token_version", 0)) != token_tv:
+        raise HTTPException(status_code=401, detail=AUTH_ERROR)
+
+    # Scoped change-password tokens may only hit change-password (enforced in router).
+    from app.core.db import oid
+    from app.services import settings as settings_service
+
+    s = await settings_service.get_settings()
+    dept_name = None
+    if doc.get("dept_id"):
+        try:
+            dept = await db.departments.find_one({"_id": oid(doc["dept_id"])})
+            if dept:
+                dept_name = dept.get("name")
+        except HTTPException:
+            dept_name = None
+
     return CurrentUser(
         id=str(doc["_id"]),
         name=doc["name"],
@@ -50,11 +75,22 @@ async def get_current_user(
         role=doc["role"],
         dept_id=doc.get("dept_id"),
         status=doc["status"],
+        must_change_password=bool(doc.get("must_change_password", False)),
+        token_version=int(doc.get("token_version", 0)),
+        scope=scope,
+        dept_name=dept_name,
+        institution_name=s.get("institution_name") or None,
+        current_term=s.get("current_term") or None,
     )
 
 
 def require_role(*roles: str):
     async def checker(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+        if user.scope == "change_password":
+            raise HTTPException(
+                status_code=403,
+                detail="Change your password before continuing.",
+            )
         if user.role not in roles:
             raise HTTPException(
                 status_code=403,

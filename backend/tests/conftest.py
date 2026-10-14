@@ -4,8 +4,8 @@ Decisions (see TEST_REPORT.md):
 - Sync FastAPI TestClient is the default `client` fixture (existing domain
   tests depend on it). An async `async_client` via httpx ASGITransport is
   also provided for concurrency tests.
-- Test DB name is `cogni_test_<hex>_dev` (random per session) so seed's
-  `_dev` safety guard passes and parallel sessions do not collide.
+- Test DB name is `cogni_test_<hex>_dev` (random per session) so the fixture
+  world's `_dev` safety guard passes and parallel sessions do not collide.
 - LLM_PROVIDER is forced to `mock` for the whole suite.
 """
 
@@ -25,21 +25,27 @@ _TEST_DB = os.environ.get("TEST_MONGO_DB") or f"cogni_test_{uuid.uuid4().hex[:10
 os.environ["TEST_MONGO_DB"] = _TEST_DB
 os.environ.setdefault("MONGO_URI", "mongodb://127.0.0.1:27017")
 os.environ["MONGO_DB"] = _TEST_DB
+os.environ["APP_ENV"] = "test"
 os.environ["LLM_PROVIDER"] = "mock"
 os.environ["JWT_SECRET"] = "test-secret-key-at-least-32-bytes!!"
 os.environ.setdefault("JWT_EXPIRE_MIN", "60")
 os.environ.setdefault("CORS_ORIGINS", "http://localhost:5173")
+os.environ.setdefault("LOGIN_RATE_LIMIT_MAX", "10000")
+os.environ.setdefault("LLM_RATE_LIMIT_MAX", "10000")
+os.environ.setdefault("LOGIN_LOCKOUT_FAILURES", "1000")
 
 from app.core import db as db_module  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.ratelimit import llm_limiter, login_limiter  # noqa: E402
 from app.main import app  # noqa: E402
-from app.seed import main as seed_main  # noqa: E402
+from tests.support.world import main as world_main  # noqa: E402
 
 settings.MONGO_DB = _TEST_DB
+settings.APP_ENV = "test"
 settings.LLM_PROVIDER = "mock"
 settings.JWT_SECRET = os.environ["JWT_SECRET"]
 settings.JWT_EXPIRE_MIN = int(os.environ["JWT_EXPIRE_MIN"])
+settings.LOGIN_LOCKOUT_FAILURES = int(os.environ["LOGIN_LOCKOUT_FAILURES"])
 
 _REAL_LOGIN_MAX_CALLS = login_limiter.max_calls
 _REAL_LLM_MAX_CALLS = llm_limiter.max_calls
@@ -64,10 +70,10 @@ def test_db_name() -> str:
 
 @pytest.fixture(scope="session", autouse=True)
 async def _session_db(test_db_name: str) -> AsyncIterator[None]:
-    """Create/seed the session DB once; drop it when the suite ends."""
+    """Load fixture world into the session DB once; drop it when the suite ends."""
     settings.MONGO_DB = test_db_name
     settings.LLM_PROVIDER = "mock"
-    await seed_main(force=False)
+    await world_main(force=False)
     yield
     from pymongo import AsyncMongoClient
 
@@ -97,12 +103,12 @@ def hit_routes() -> set[tuple[str, str]]:
 
 @pytest.fixture
 async def client() -> AsyncIterator[TestClient]:
-    """Fresh seeded DB + sync TestClient for each test."""
+    """Fresh fixture-world DB + sync TestClient for each test."""
     settings.MONGO_DB = _TEST_DB
     settings.LLM_PROVIDER = "mock"
     # Lifespan may have opened a client against a previous DB name; ensure
     # get_db() reads settings.MONGO_DB (it does). Reseed for isolation.
-    await seed_main(force=False)
+    await world_main(force=False)
     with TestClient(app) as c:
         yield c
 
@@ -112,7 +118,7 @@ async def async_client() -> AsyncIterator[AsyncClient]:
     """httpx AsyncClient over ASGITransport (no real server)."""
     settings.MONGO_DB = _TEST_DB
     settings.LLM_PROVIDER = "mock"
-    await seed_main(force=False)
+    await world_main(force=False)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         # Ensure lifespan-connected mongo client exists (TestClient does this

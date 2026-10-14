@@ -57,7 +57,7 @@ def _assert_hod_owns_dept(hod: CurrentUser, cls: dict) -> None:
 
 
 def needs_approval(exam: dict, settings_doc: dict) -> bool:
-    approval = settings_doc.get("approval", "none")
+    approval = settings_doc.get("approval", "major")
     if approval == "all":
         return True
     if approval == "major":

@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.middleware import RequestSizeLimitMiddleware
 from app.core.ratelimit import login_limiter
 from app.main import app
-from app.seed import main as seed_main
+from tests.support.world import TEST_PASSWORD, main as world_main
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
@@ -15,7 +15,7 @@ TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 @pytest.fixture
 async def client():
     settings.MONGO_DB = TEST_DB
-    await seed_main(force=False)
+    await world_main(force=False)
     # raise_server_exceptions=False: this file specifically exercises error
     # paths (a 500 from an unhandled exception, a 429 from the rate
     # limiter), and TestClient's default of re-raising any exception that
@@ -47,7 +47,7 @@ def test_unhandled_exception_returns_generic_500(client, monkeypatch):
 
     monkeypatch.setattr("app.services.admin.summary", boom)
     token = client.post(
-        "/api/auth/login", json={"email": "admin@cogni.pk", "password": "demo123"}
+        "/api/auth/login", json={"email": "admin@cogni.pk", "password": TEST_PASSWORD}
     ).json()["access_token"]
 
     resp = client.get("/api/admin/summary", headers={"Authorization": f"Bearer {token}"})

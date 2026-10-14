@@ -7,7 +7,7 @@ import concurrent.futures
 import pytest
 from bson import ObjectId
 
-from tests.helpers import DEMO_PASSWORD, login_as, make_exam_draft, upload_material
+from tests.helpers import WORLD_PASSWORD, login_as, make_exam_draft, upload_material
 
 pytestmark = pytest.mark.security
 
@@ -83,16 +83,18 @@ def test_mass_assignment_ignored_on_user_create_and_patch(client):
     assert create.status_code in (201, 422), create.text
     if create.status_code == 201:
         body = create.json()
-        assert body["role"] == "student"
-        assert body["status"] == "active"  # status not accepted on create
-        assert "password" not in body
-        assert "password_hash" not in body
-        assert "score" not in body
-        # password stay demo123 — "hacked" must not work
+        user = body.get("user", body)
+        temp = body.get("temporary_password")
+        assert user["role"] == "student"
+        assert user["status"] == "active"  # status not accepted on create
+        assert "password" not in user
+        assert "password_hash" not in user
+        assert "score" not in user
         bad = client.post("/api/auth/login", json={"email": email, "password": "hacked"})
         assert bad.status_code == 401
-        ok = client.post("/api/auth/login", json={"email": email, "password": DEMO_PASSWORD})
+        ok = client.post("/api/auth/login", json={"email": email, "password": temp})
         assert ok.status_code == 200
+        assert ok.json().get("scope") == "change_password"
 
     # Patch with extra fields
     teacher = login_as(client, "teacher")
@@ -267,7 +269,7 @@ def test_parallel_joins_same_code(client):
     class_id = cls.json()["id"]
     dept_id = cls.json()["dept_id"]
 
-    # Create 5 fresh students in the teacher's department
+    # Create 5 fresh students in the teacher's department; finish password change.
     emails = []
     for i in range(5):
         email = f"join.race.{i}.{ObjectId()}@umt.edu.pk"
@@ -277,12 +279,21 @@ def test_parallel_joins_same_code(client):
             headers=admin,
         )
         assert resp.status_code == 201, resp.text
+        temp = resp.json()["temporary_password"]
+        scoped = client.post("/api/auth/login", json={"email": email, "password": temp})
+        assert scoped.status_code == 200
+        changed = client.post(
+            "/api/auth/change-password",
+            json={"current_password": temp, "new_password": WORLD_PASSWORD},
+            headers={"Authorization": f"Bearer {scoped.json()['access_token']}"},
+        )
+        assert changed.status_code == 200, changed.text
         emails.append(email)
 
     tokens = []
     for email in emails:
         tok = client.post(
-            "/api/auth/login", json={"email": email, "password": DEMO_PASSWORD}
+            "/api/auth/login", json={"email": email, "password": WORLD_PASSWORD}
         ).json()["access_token"]
         tokens.append(tok)
 

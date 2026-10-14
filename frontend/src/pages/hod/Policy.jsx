@@ -30,9 +30,8 @@ export default function Policy() {
     setLoading(true)
     setError(null)
     try {
-      const [p, demos, st] = await Promise.all([
+      const [p, st] = await Promise.all([
         api.getHodPolicy(),
-        api.getDemoAccounts().catch(() => []),
         api.getAdminSettings().catch(() => null),
       ])
       setPolicy(p)
@@ -40,8 +39,7 @@ export default function Policy() {
       setHigher(p.higher_order_pct ?? 0)
       setRepeat(p.max_repeats ?? 0)
       setSettings(st)
-      const me = (demos || []).find((u) => u.id === user?.id || u.email === user?.email)
-      if (me?.dept_name) setDeptName(me.dept_name)
+      if (user?.dept_name) setDeptName(user.dept_name)
     } catch (err) {
       setError(err)
       setPolicy(null)

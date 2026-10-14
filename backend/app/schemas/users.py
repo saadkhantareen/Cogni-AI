@@ -14,6 +14,10 @@ class UserOut(OutBase):
     role: Role
     dept_id: str | None = None
     status: UserStatus
+    must_change_password: bool = False
+    dept_name: str | None = None
+    institution_name: str = ""
+    current_term: str = ""
 
 
 class UserCreate(BaseModel):
@@ -23,7 +27,16 @@ class UserCreate(BaseModel):
     dept_id: str | None = None
 
 
+class UserCreateResult(BaseModel):
+    user: UserOut
+    temporary_password: str
+
+
 class UserUpdate(BaseModel):
     role: Role | None = None
     dept_id: str | None = None
     status: UserStatus | None = None
+
+
+class PasswordResetResult(BaseModel):
+    temporary_password: str

@@ -51,15 +51,12 @@ export default function Requests() {
 
       let ts = analytics?.teacher_activity || []
       if (!ts.length) {
-        // Fallback: unique teachers from classes + demo names
-        const demos = await api.getDemoAccounts().catch(() => [])
-        const demoById = new Map((demos || []).map((u) => [u.id, u.name]))
         const seen = new Map()
         ;(cls || []).forEach((c) => {
           if (c.teacher_id && !seen.has(c.teacher_id)) {
             seen.set(c.teacher_id, {
               teacher_id: c.teacher_id,
-              teacher_name: demoById.get(c.teacher_id) || 'Teacher',
+              teacher_name: 'Teacher',
             })
           }
         })

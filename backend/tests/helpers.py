@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-DEMO_PASSWORD = "demo123"
+from tests.support.world import TEST_PASSWORD
 
-# Seed personas (see app/seed.py). Named for the Phase 1 contract.
+WORLD_PASSWORD = TEST_PASSWORD
+
+# Fixture-world personas (see tests/support/world.py).
 PERSONAS = {
     "admin": "admin@cogni.pk",
     "admin2": "imran.butt@cogni.pk",
@@ -24,7 +26,7 @@ PERSONAS = {
 # "not in class" IDOR against CS-201-A exams.
 
 
-def login_as(client, role_or_email: str, password: str = DEMO_PASSWORD) -> dict[str, str]:
+def login_as(client, role_or_email: str, password: str = WORLD_PASSWORD) -> dict[str, str]:
     """Return Authorization headers for a demo persona or raw email."""
     email = PERSONAS.get(role_or_email, role_or_email)
     resp = client.post("/api/auth/login", json={"email": email, "password": password})
@@ -32,7 +34,7 @@ def login_as(client, role_or_email: str, password: str = DEMO_PASSWORD) -> dict[
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 
 
-def token_for(client, role_or_email: str, password: str = DEMO_PASSWORD) -> str:
+def token_for(client, role_or_email: str, password: str = WORLD_PASSWORD) -> str:
     email = PERSONAS.get(role_or_email, role_or_email)
     resp = client.post("/api/auth/login", json={"email": email, "password": password})
     assert resp.status_code == 200

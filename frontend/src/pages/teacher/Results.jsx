@@ -46,11 +46,7 @@ export default function Results() {
     setLoading(true)
     setError(null)
     try {
-      const [ex, res, demos] = await Promise.all([
-        api.getExam(id),
-        api.getExamResults(id),
-        api.getDemoAccounts().catch(() => []),
-      ])
+      const [ex, res] = await Promise.all([api.getExam(id), api.getExamResults(id)])
       const c = await api.getClass(ex.class_id)
       const detailList = await Promise.all(
         (res.attempts || []).map((row) =>
@@ -58,9 +54,6 @@ export default function Results() {
         ),
       )
       const dir = {}
-      ;(demos || []).forEach((u) => {
-        dir[u.id] = { name: u.name, email: u.email }
-      })
       ;(res.attempts || []).forEach((row) => {
         dir[row.student_id] = { name: row.student_name, email: dir[row.student_id]?.email }
       })

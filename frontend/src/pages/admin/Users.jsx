@@ -9,6 +9,7 @@ import EmptyState from '../../components/EmptyState'
 import Field from '../../components/Field'
 import { Icon } from '../../components/IconSprite'
 import { useModal } from '../../components/Modal'
+import TemporaryPasswordDialog from '../../components/TemporaryPasswordDialog'
 import PageTop from '../../components/PageTop'
 import Pill from '../../components/Pill'
 import Tabs from '../../components/Tabs'
@@ -111,17 +112,29 @@ export default function Users() {
     }
   }
 
+  function showTempPassword(userLabel, temporaryPassword) {
+    openModal(
+      <TemporaryPasswordDialog
+        userLabel={userLabel}
+        temporaryPassword={temporaryPassword}
+        onClose={closeModal}
+      />,
+      { onClose: () => {} },
+    )
+  }
+
   async function onReset(u) {
     const ok = await confirm({
       title: `Reset password for ${u.name}?`,
-      body: 'Their password becomes demo123 and they are notified.',
+      body: 'They receive a new temporary password and must change it on next sign-in.',
       ok: 'Reset password',
     })
     if (!ok) return
     setBusyId(u.id)
     try {
-      await api.resetAdminUserPassword(u.id)
-      toast(`Password for ${u.name} reset to demo123`)
+      const res = await api.resetAdminUserPassword(u.id)
+      toast(`Password reset for ${u.name}`)
+      showTempPassword(`${u.name} · ${u.email}`, res.temporary_password)
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not reset password.', {
         type: 'error',
@@ -137,13 +150,14 @@ export default function Users() {
         depts={depts}
         closeModal={closeModal}
         toast={toast}
-        onCreated={(created) => {
+        onCreated={(created, temporaryPassword) => {
           setUsers((prev) => [...prev, created])
           closeModal()
           if (created.role === 'admin') setTab('admins')
           else if (created.role === 'student') setTab('students')
           else setTab('teachers')
-          toast(`${created.name} added. They can sign in with demo123.`)
+          toast(`${created.name} added`)
+          showTempPassword(`${created.name} · ${created.email}`, temporaryPassword)
         }}
       />,
     )
@@ -344,20 +358,20 @@ function AddUserForm({ depts, closeModal, toast, onCreated }) {
     const n = name.trim()
     const em = email.trim().toLowerCase()
     if (!n) next.name = "Enter the person's full name"
-    if (!/.+@.+\..+/.test(em)) next.email = 'Enter a valid email, e.g. name@umt.edu.pk'
+    if (!/.+@.+\..+/.test(em)) next.email = 'Enter a valid email, e.g. name@school.edu'
     if (role !== 'admin' && !deptId) next.dept = 'Choose a department'
     setErrors(next)
     if (Object.keys(next).length) return
 
     setBusy(true)
     try {
-      const created = await api.createAdminUser({
+      const res = await api.createAdminUser({
         name: n,
         email: em,
         role,
         dept_id: role === 'admin' ? null : deptId,
       })
-      onCreated(created)
+      onCreated(res.user, res.temporary_password)
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Could not add user.'
       if (err instanceof ApiError && err.status === 409) setErrors({ email: msg })
@@ -418,9 +432,7 @@ function AddUserForm({ depts, closeModal, toast, onCreated }) {
           </select>
         </Field>
       </div>
-      <p className="small">
-        The password is set to <span className="mono">demo123</span>.
-      </p>
+      <p className="small">A temporary password is generated and shown once after you add the user.</p>
       <div className="acts">
         <button type="button" className="btn" onClick={closeModal} disabled={busy}>
           Cancel

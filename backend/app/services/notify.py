@@ -30,14 +30,31 @@ async def notify(
     )
 
 
-async def log_activity(actor: CurrentUser, text: str) -> None:
+async def log_activity(
+    actor: CurrentUser | None,
+    text: str,
+    *,
+    actor_override: dict | None = None,
+) -> None:
     db = get_db()
+    if actor_override:
+        actor_id = actor_override.get("id")
+        actor_name = actor_override.get("name", "System")
+        role = actor_override.get("role", "system")
+    elif actor is not None:
+        actor_id = actor.id
+        actor_name = actor.name
+        role = actor.role
+    else:
+        actor_id = None
+        actor_name = "System"
+        role = "system"
     await db.activity_log.insert_one(
         {
             "at": datetime.now(UTC),
-            "actor_id": actor.id,
-            "actor_name": actor.name,
-            "role": actor.role,
+            "actor_id": actor_id,
+            "actor_name": actor_name,
+            "role": role,
             "text": text,
         }
     )

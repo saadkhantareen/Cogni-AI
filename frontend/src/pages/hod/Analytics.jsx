@@ -24,15 +24,9 @@ export default function Analytics() {
     setLoading(true)
     setError(null)
     try {
-      const [analytics, demos] = await Promise.all([
-        api.getHodAnalytics(),
-        api.getDemoAccounts().catch(() => []),
-      ])
+      const analytics = await api.getHodAnalytics()
       setData(analytics)
-      const me = (demos || []).find(
-        (u) => u.id === user?.id || u.email === user?.email,
-      )
-      if (me?.dept_name) setDeptName(me.dept_name)
+      if (user?.dept_name) setDeptName(user.dept_name)
     } catch (err) {
       setError(err)
       setData(null)
@@ -83,7 +77,7 @@ export default function Analytics() {
 
   return (
     <>
-      <PageTop crumb={`${deptName} · Fall 2026`} title="Department" />
+      <PageTop crumb={deptName || 'Department'} title="Department" />
       <DeptTabs current="analytics" />
 
       <div className="grid g4">
