@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173"
     MAX_UPLOAD_MB: int = 25
     MAX_REQUEST_MB: int = 50
+    # Login / LLM sliding-window ceilings (per IP / per user). Raise for E2E.
+    LOGIN_RATE_LIMIT_MAX: int = 10
+    LLM_RATE_LIMIT_MAX: int = 20
 
     @property
     def cors_origins_list(self) -> list[str]:

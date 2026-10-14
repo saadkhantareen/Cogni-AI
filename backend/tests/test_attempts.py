@@ -16,14 +16,6 @@ from app.services.llm import LLMClient, get_llm_client
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
 
-@pytest.fixture
-async def client():
-    settings.MONGO_DB = TEST_DB
-    settings.LLM_PROVIDER = "mock"
-    await seed_main(force=False)
-    with TestClient(app) as c:
-        yield c
-
 
 def _auth(client, email, password="demo123"):
     resp = client.post("/api/auth/login", json={"email": email, "password": password})

@@ -654,6 +654,17 @@ async def main(force: bool = False) -> None:
     # ---- settings -----------------------------------------------------------
     await db.settings.insert_one({"approval": "major", "max_upload_mb": 25, "ai_threshold_default": 70})
 
+    # Dropping collections above also drops indexes; recreate them so uniqueness
+    # constraints hold for the rest of the process (and for tests that reseed).
+    await db.users.create_index("email", unique=True)
+    await db.classes.create_index("join_code", unique=True)
+    await db.classes.create_index("teacher_id")
+    await db.exams.create_index("class_id")
+    await db.exams.create_index("status")
+    await db.attempts.create_index([("exam_id", 1), ("student_id", 1)], unique=True)
+    await db.notifications.create_index([("to_user_id", 1), ("created_at", -1)])
+    await db.activity_log.create_index([("at", -1)])
+
     counts = {}
     for name in collections:
         counts[name] = await db[name].count_documents({})

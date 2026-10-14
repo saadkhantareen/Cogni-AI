@@ -174,16 +174,27 @@ class MockLLM(LLMClient):
 
         questions = []
         n = 0
+        # Salt from avoid-list size so regenerate/add never collides with an
+        # existing stem when LLM_PROVIDER=mock (stems used to be identical for
+        # the same heading, which made +MCQ/+Short/+Essay fail on seeded exams).
+        salt = len(avoid)
         for qtype, count in counts.items():
-            for _ in range(count):
+            produced = 0
+            attempts = 0
+            while produced < count and attempts < count + 32:
                 chunk = chunks[n % len(chunks)]
                 clo = preferred_clo or clos[n % len(clos)]
                 bloom = bloom_cycle[n % len(bloom_cycle)]
                 heading = preferred_topic or chunk.get("heading") or f"Topic {chunk['idx']}"
-                question = self._build_question(qtype, bloom, heading, clo, chunk, n, chunks)
+                question = self._build_question(
+                    qtype, bloom, heading, clo, chunk, n + salt, chunks
+                )
                 if question["text"] not in avoid:
                     questions.append(question)
+                    avoid.add(question["text"])
+                    produced += 1
                 n += 1
+                attempts += 1
         return {"questions": questions}
 
     def _build_question(
@@ -197,13 +208,15 @@ class MockLLM(LLMClient):
             "source_chunk_idx": chunk["idx"],
         }
         snippet = _first_sentence(chunk["text"])
+        # Variant index keeps each stem unique for avoid/dedupe checks.
+        variant = n + 1
         if qtype == "MCQ":
             correct = snippet or f"A key idea from {heading}."
             other_chunks = [c for c in chunks if c["idx"] != chunk["idx"]] or chunks
             candidates = [
                 _first_sentence(other_chunks[(n + 1) % len(other_chunks)]["text"]),
                 _first_sentence(other_chunks[(n + 2) % len(other_chunks)]["text"]),
-                f"A common misconception about {heading}.",
+                f"A common misconception about {heading} (case {variant}).",
             ]
             seen = {correct}
             distractors = []
@@ -212,7 +225,9 @@ class MockLLM(LLMClient):
                     distractors.append(c)
                     seen.add(c)
             while len(distractors) < 3:
-                distractors.append(f"An unrelated statement about {heading} #{len(distractors)}.")
+                distractors.append(
+                    f"An unrelated statement about {heading} #{len(distractors)}-{variant}."
+                )
             correct_index = n % 4
             options = [None] * 4
             options[correct_index] = correct
@@ -223,17 +238,29 @@ class MockLLM(LLMClient):
                     j += 1
             base.update(
                 {
-                    "text": f'The material on {heading} states: "{snippet}" Which statement is correct?',
+                    "text": (
+                        f'Item {variant} on {heading}: the source begins "{snippet}". '
+                        f"Which statement is correct?"
+                    ),
                     "options": options,
                     "answer_index": correct_index,
                 }
             )
         else:
             keywords = _keywords_from_text(chunk["text"])
-            verb = "explain" if qtype == "Short" else "critically evaluate and justify your position on"
+            if qtype == "Short":
+                prompt = (
+                    f'Item {variant} on {heading}: the source begins "{snippet}". '
+                    f"In your own words, explain the key idea."
+                )
+            else:
+                prompt = (
+                    f'Item {variant} on {heading}: the source begins "{snippet}". '
+                    f"Critically evaluate and justify your position on this idea."
+                )
             base.update(
                 {
-                    "text": f'The material on {heading} states: "{snippet}" {verb.capitalize()} the key idea behind this.',
+                    "text": prompt,
                     "model_answer": snippet or f"{heading} is explained in the material.",
                     "keywords": keywords,
                 }

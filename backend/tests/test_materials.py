@@ -11,12 +11,6 @@ from tests.pdf_fixtures import sample_multipage_pdf, sample_scanned_pdf
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
 
-@pytest.fixture
-async def client():
-    settings.MONGO_DB = TEST_DB
-    await seed_main(force=False)
-    with TestClient(app) as c:
-        yield c
 
 
 def _auth(client, email, password="demo123"):

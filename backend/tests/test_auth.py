@@ -12,8 +12,10 @@ from app.seed import main as seed_main
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
-# A throwaway admin-only route, mounted only for this test module, to prove
-# require_role() rejects the wrong role. Not part of the real API surface.
+# Throwaway admin-only route for require_role() proofs. Mounted only inside
+# the role-guard tests so it never pollutes app.openapi() for the suite-wide
+# RBAC / route-coverage gates (which failed under pytest-randomly when this
+# path was registered at import time but not yet hit).
 _test_router = APIRouter()
 
 
@@ -22,15 +24,17 @@ async def _admin_only(user=Depends(require_role("admin"))):
     return {"ok": True}
 
 
-app.include_router(_test_router)
+_admin_only_mounted = False
 
 
 @pytest.fixture
-async def client():
-    settings.MONGO_DB = TEST_DB
-    await seed_main(force=False)
-    with TestClient(app) as c:
-        yield c
+def admin_only_route():
+    global _admin_only_mounted
+    if not _admin_only_mounted:
+        app.include_router(_test_router)
+        _admin_only_mounted = True
+        app.openapi_schema = None
+    yield
 
 
 async def _set_status(email: str, status: str) -> None:
@@ -103,14 +107,14 @@ def test_token_missing_is_unauthorized(client):
     assert resp.json()["code"] == "UNAUTHORIZED"
 
 
-def test_role_guard_rejects_wrong_role(client):
+def test_role_guard_rejects_wrong_role(client, admin_only_route):
     token = _login(client, "hamza.ali@umt.edu.pk").json()["access_token"]  # student
     resp = client.get("/api/_test/admin-only", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 403
     assert resp.json()["code"] == "FORBIDDEN"
 
 
-def test_role_guard_allows_correct_role(client):
+def test_role_guard_allows_correct_role(client, admin_only_route):
     token = _login(client, "admin@cogni.pk").json()["access_token"]
     resp = client.get("/api/_test/admin-only", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200

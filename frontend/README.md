@@ -56,7 +56,33 @@ The login page also loads `/api/auth/demo-accounts` for one-click sign-in.
 npm run dev      # Vite dev server
 npm run build    # production build (must pass with no errors)
 npm run preview  # serve the build
+npm run test:e2e        # Playwright Chromium suite (seeds + starts API/Vite)
+npm run test:e2e:ui     # Playwright UI mode
+npm run test:e2e:headed # headed browser
 ```
+
+### Playwright E2E
+
+UI tests live in `e2e/`. They exercise every portal smoke path plus the full
+README demo loop (HOD request → teacher generate → HOD approve → publish →
+student attempt → release → feedback → admin activity log).
+
+Prerequisites: MongoDB reachable with the same `MONGO_URI` as `backend/.env`,
+and `backend/.venv` with app deps installed.
+
+```bash
+# once per machine
+npx playwright install chromium
+
+# run (global setup seeds MONGO_DB=cogni_playwright with --force,
+# then starts uvicorn :8000 and Vite :5173 unless already running)
+npm run test:e2e
+```
+
+Override the DB name with `PLAYWRIGHT_MONGO_DB=…` if needed. Set `CI=1` to
+disable `reuseExistingServer` and force fresh webServer processes. The
+Playwright webServer raises `LOGIN_RATE_LIMIT_MAX` / `LLM_RATE_LIMIT_MAX` so
+repeated demo logins do not hit the production 10/min login cap.
 
 ## Demo script (full loop)
 

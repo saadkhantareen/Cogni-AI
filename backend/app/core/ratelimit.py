@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
 
+from app.core.config import settings
 from app.core.deps import CurrentUser
 
 
@@ -27,8 +28,12 @@ class InMemoryRateLimiter:
         hits.append(now)
 
 
-login_limiter = InMemoryRateLimiter(max_calls=10, window_seconds=60)
-llm_limiter = InMemoryRateLimiter(max_calls=20, window_seconds=60)
+login_limiter = InMemoryRateLimiter(
+    max_calls=settings.LOGIN_RATE_LIMIT_MAX, window_seconds=60
+)
+llm_limiter = InMemoryRateLimiter(
+    max_calls=settings.LLM_RATE_LIMIT_MAX, window_seconds=60
+)
 
 
 def check_login_rate_limit(request: Request) -> None:

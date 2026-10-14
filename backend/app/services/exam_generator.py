@@ -238,4 +238,9 @@ async def regenerate_one(
     for q in questions:
         if q["type"] == qtype and not _is_duplicate(q, existing_questions):
             return q
+    # Prefer a non-similar stem; fall back to any valid question of the right
+    # type (exact-text collisions are already filtered via avoid_texts).
+    for q in questions:
+        if q["type"] == qtype:
+            return q
     raise ValueError("The AI could not generate a valid replacement question.")

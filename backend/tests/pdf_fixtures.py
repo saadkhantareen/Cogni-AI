@@ -1,5 +1,8 @@
-"""Builds minimal, valid, hand-written PDF bytes for tests, so real PDF
-extraction is exercised without adding a PDF-generation dependency."""
+"""Fixture PDFs for material-upload tests.
+
+Hand-built PDFs (no dependency) plus optional reportlab variants for
+oversized / non-PDF-renamed cases used by the security and materials suites.
+"""
 
 import io
 
@@ -93,3 +96,55 @@ def sample_multipage_pdf() -> bytes:
 def sample_scanned_pdf() -> bytes:
     """A PDF with (almost) no extractable text, mimicking a scanned image."""
     return build_pdf([["x"]])
+
+
+def oversized_pdf(min_bytes: int = 2 * 1024 * 1024) -> bytes:
+    """A valid-looking PDF whose raw size exceeds a typical upload limit."""
+    # Pad a tiny valid PDF with whitespace in a stream so pypdf still opens it.
+    base = build_pdf([["pad"] * 5])
+    pad = b" " * max(0, min_bytes - len(base))
+    return base + pad
+
+
+def non_pdf_named_pdf() -> bytes:
+    """Plain text bytes with a .pdf filename — wrong magic bytes."""
+    return b"This is not a PDF file at all.\n" * 50
+
+
+def reportlab_course_pdf() -> bytes:
+    """Optional richer multi-page course PDF via reportlab (if installed)."""
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+    except ImportError:
+        return sample_multipage_pdf()
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    paragraphs = [
+        "Data Structures — Hash Tables",
+        "A hash table maps keys to array slots using a hash function, "
+        "giving O(1) average lookup time for most inputs. Collisions occur "
+        "when two keys map to the same slot and are resolved by chaining "
+        "or open addressing with linear or quadratic probing.",
+        "Trees and Graphs",
+        "AVL trees keep sibling subtree heights within one. Sparse graphs "
+        "prefer adjacency lists over matrices for memory. Breadth-first "
+        "search uses a queue; depth-first search uses a stack or recursion.",
+        "Heaps and Queues",
+        "A binary heap supports O(log n) insert and extract-min. Priority "
+        "queues order hospital triage by severity rather than FIFO arrival.",
+    ]
+    for page in range(3):
+        y = 750
+        c.drawString(72, y, f"COURSE NOTES — PAGE {page + 1}")
+        y -= 28
+        for para in paragraphs:
+            for i in range(0, len(para), 90):
+                c.drawString(72, y, para[i : i + 90])
+                y -= 14
+                if y < 72:
+                    break
+            y -= 10
+        c.showPage()
+    c.save()
+    return buf.getvalue()

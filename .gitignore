@@ -5,3 +5,13 @@ __pycache__/
 .env
 dist/
 .pytest_cache/
+frontend/playwright-report/
+frontend/test-results/
+frontend/blob-report/
+frontend/playwright/.cache/
+
+# coverage / local artifacts
+.coverage
+backend/.coverage
+htmlcov/
+*.cover
