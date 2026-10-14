@@ -38,8 +38,9 @@ ownership checks before touching the database.
 - `pages/{admin,hod,teacher,student,public}/` — one component per v7 page
   function (`P['t-dash']`, `P['h-approvals']`, ...), one role folder each,
   plus `public/` for landing and login.
-- `styles/` — the CSS lifted from the v7 `<style>` block (ported verbatim in
-  a later phase, not this one).
+- `styles/` — CSS lifted verbatim from the v7 `<style>` block, split into
+  `tokens.css`, `base.css`, `components.css`, `landing.css`, `auth.css`,
+  and `app.css` (imported in that order from `main.jsx`).
 - `utils/` — pure helpers ported from v7 (bloom pill, status pill, grading
   display helpers, date formatting) with no DOM or fetch dependencies.
 
