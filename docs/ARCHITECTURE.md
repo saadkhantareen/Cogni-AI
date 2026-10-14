@@ -70,12 +70,49 @@ untrusted input.
 
 ## v7 pages -> React routes
 
-Route prefixes follow v7's `ROLE[role].pre` (`a-`, `h-`, `t-`, `s-`) mapped
-to `/admin/...`, `/hod/...`, `/teacher/...`, `/student/...`. Each v7
-`P['x-y']` page function becomes one React route/component under
-`pages/<role>/`, e.g. `P['t-dash']` -> `pages/teacher/Dashboard.jsx` at
-`/teacher`, `P['t-exam']` -> `pages/teacher/ExamEditor.jsx` at
-`/teacher/exams/:id`, `P['s-take']` -> `pages/student/TakeExam.jsx` at
-`/student/exams/:id/take`. Landing and login stay public routes outside the
-app shell. This mapping is finalized page-by-page in later phases; this
-phase only creates the folders.
+Public routes live outside the app shell. Authenticated pages sit under
+`/app/<role>/…`, with a `RoleRoute` guard that blocks cross-role URLs and
+redirects to that role's home. After login the client navigates to
+`/app/admin`, `/app/hod`, `/app/teacher`, or `/app/student`.
+
+| v7 page id | React route | Component (planned) |
+|------------|-------------|---------------------|
+| *(landing)* | `/` | `pages/public/Landing.jsx` |
+| *(login)* | `/login` | `pages/public/Login.jsx` |
+| `a-dash` | `/app/admin` | `pages/admin/Dashboard.jsx` |
+| `a-depts` | `/app/admin/departments` | `pages/admin/Departments.jsx` |
+| `a-classes` | `/app/admin/departments?tab=classes` | `pages/admin/Departments.jsx` |
+| `a-hod` | `/app/admin/departments/:id/head` | `pages/admin/ChangeHead.jsx` |
+| `a-users` | `/app/admin/users` | `pages/admin/Users.jsx` |
+| `a-add` | `/app/admin/users/new` | `pages/admin/AddStaff.jsx` |
+| `a-settings` | `/app/admin/settings` | `pages/admin/Settings.jsx` |
+| `a-audit` | `/app/admin/settings?tab=activity` | `pages/admin/Settings.jsx` |
+| `h-dash` | `/app/hod` | `pages/hod/Dashboard.jsx` |
+| `h-assign` | `/app/hod/requests` | `pages/hod/Requests.jsx` |
+| `h-approvals` | `/app/hod/approvals` | `pages/hod/Approvals.jsx` |
+| `h-review` | `/app/hod/approvals/:id` | `pages/hod/Review.jsx` |
+| `h-analytics` | `/app/hod/analytics` | `pages/hod/Analytics.jsx` |
+| `h-policy` | `/app/hod/policy` | `pages/hod/Policy.jsx` |
+| `t-dash` | `/app/teacher` | `pages/teacher/Dashboard.jsx` |
+| `t-classes` | `/app/teacher/classes` | `pages/teacher/Classes.jsx` |
+| `t-class` | `/app/teacher/classes/:id` | `pages/teacher/ClassDetail.jsx` |
+| `t-materials` | `/app/teacher/materials` | `pages/teacher/Materials.jsx` |
+| `t-create` | `/app/teacher/exams/new` | `pages/teacher/CreateExam.jsx` |
+| `t-exams` | `/app/teacher/exams` | `pages/teacher/Exams.jsx` |
+| `t-exam` | `/app/teacher/exams/:id` | `pages/teacher/ExamEditor.jsx` |
+| `t-results` | `/app/teacher/exams/:id/results` | `pages/teacher/Results.jsx` |
+| `t-attempt` | `/app/teacher/attempts/:id` | `pages/teacher/AttemptReview.jsx` |
+| `t-flags` | `/app/teacher/flags` | `pages/teacher/Flags.jsx` |
+| `s-dash` | `/app/student` | `pages/student/Dashboard.jsx` |
+| `s-classes` | `/app/student/classes` | `pages/student/Classes.jsx` |
+| `s-class` | `/app/student/classes/:id` | `pages/student/ClassDetail.jsx` |
+| `s-exams` | `/app/student/exams` | `pages/student/Exams.jsx` |
+| `s-take` | `/app/student/exams/:id/take` | `pages/student/TakeExam.jsx` |
+| `s-done` | `/app/student/attempts/:id/done` | `pages/student/ExamDone.jsx` |
+| `s-results` | `/app/student/results` | `pages/student/Results.jsx` |
+| `s-feedback` | `/app/student/attempts/:id/feedback` | `pages/student/Feedback.jsx` |
+| `s-study` | `/app/student/study` | `pages/student/StudyAssistant.jsx` |
+
+Unknown paths render `pages/NotFound.jsx`. Phase F2 wires public pages,
+auth, and placeholder role homes; later phases replace each placeholder with
+the matching v7 page.
