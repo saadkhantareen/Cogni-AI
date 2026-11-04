@@ -31,7 +31,7 @@ def _prefs_from_doc(doc: dict | None) -> dict:
 def settings_out_from_doc(doc: dict | None) -> TeacherLlmSettingsOut:
     prefs = _prefs_from_doc(doc)
     provider = (prefs.get("provider") or "platform").strip().lower()
-    if provider not in ("platform", "openrouter", "groq"):
+    if provider not in ("platform", "vyceai", "openrouter", "groq"):
         provider = "platform"
     model = (prefs.get("model") or "").strip()
     enc = prefs.get("api_key_enc") or ""
@@ -80,7 +80,7 @@ async def update_teacher_llm_settings(
         if not llm_catalog.is_allowed_model(provider, model):
             raise HTTPException(
                 status_code=400,
-                detail="Choose a free chat model from the list for that provider.",
+                detail="Choose a chat model from the list for that provider.",
             )
 
     prefs = dict(_prefs_from_doc(doc))
@@ -98,7 +98,7 @@ async def update_teacher_llm_settings(
     if provider != "platform" and not prefs.get("api_key_enc"):
         raise HTTPException(
             status_code=400,
-            detail="Paste an API key for OpenRouter or Groq, or switch to Platform default.",
+            detail="Paste an API key for VyceAI, OpenRouter or Groq, or switch to Platform default.",
         )
 
     await db.users.update_one({"_id": oid(actor.id)}, {"$set": {LLM_FIELD: prefs}})
@@ -110,7 +110,7 @@ def resolve_teacher_llm_credentials(user_doc: dict | None) -> dict | None:
     """Return {provider, model, api_key, base_url} when BYOK is active, else None."""
     prefs = _prefs_from_doc(user_doc)
     provider = (prefs.get("provider") or "platform").strip().lower()
-    if provider not in ("openrouter", "groq"):
+    if provider not in ("vyceai", "openrouter", "groq"):
         return None
     enc = prefs.get("api_key_enc") or ""
     if not enc:

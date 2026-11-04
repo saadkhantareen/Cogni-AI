@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.main import app
-from tests.helpers import WORLD_PASSWORD, portal_for
+from tests.helpers import WORLD_PASSWORD, open_window, portal_for
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
@@ -41,6 +41,7 @@ def _generate(client, email, *, class_id, material_id, counts, title="Generated 
             "title": title,
             "kind": "Quiz",
             "duration_min": 30,
+            **open_window(),
             "material_ids": [material_id],
             "counts": counts,
             **extra,
@@ -338,6 +339,7 @@ def test_generate_dynamic_types_long_questions(client):
             "title": "Dynamic types paper",
             "kind": "Quiz",
             "duration_min": 30,
+            **open_window(),
             "material_ids": [material_id],
             "types": [
                 {"label": "MCQ", "count": 2, "format": "mcq", "marks": 2},
@@ -373,3 +375,78 @@ def test_generate_dynamic_types_long_questions(client):
     )
     assert add.status_code == 201, add.text
     assert any(q["type"] == "Case Study" for q in add.json()["exam"]["questions"])
+
+
+def test_exam_pdf_download_for_teacher_and_hod(client):
+    c1_id = _class_id(client, "CS-201-A", TEACHER_A)
+    material_id = _first_material_id(client, c1_id, TEACHER_A)
+    gen = _generate(
+        client,
+        TEACHER_A,
+        class_id=c1_id,
+        material_id=material_id,
+        counts={"MCQ": 1, "Short": 1},
+        title="PDF Export Quiz",
+    )
+    assert gen.status_code == 201, gen.text
+    exam = gen.json()["exam"]
+    exam_id = exam["id"]
+    # Plant a distinctive model answer to prove it never leaks into the PDF.
+    q_written = next(q for q in exam["questions"] if q["type"] != "MCQ")
+    secret = "SECRET_MODEL_ANSWER_MUST_NOT_APPEAR_IN_PDF"
+    client.patch(
+        f"/api/exams/{exam_id}/questions/{q_written['qid']}",
+        json={"model_answer": secret},
+        headers=_auth(client, TEACHER_A),
+    )
+
+    import pymupdf
+
+    def _pdf_text(data: bytes) -> str:
+        doc = pymupdf.open(stream=data, filetype="pdf")
+        try:
+            return "\n".join(page.get_text() for page in doc)
+        finally:
+            doc.close()
+
+    teacher_resp = client.get(f"/api/exams/{exam_id}/pdf", headers=_auth(client, TEACHER_A))
+    assert teacher_resp.status_code == 200, teacher_resp.text
+    assert teacher_resp.headers["content-type"].startswith("application/pdf")
+    assert teacher_resp.content[:4] == b"%PDF"
+    teacher_text = _pdf_text(teacher_resp.content)
+    assert "PDF EXPORT QUIZ EXAMINATION" in teacher_text
+    assert "Section A - Multiple-Choice Questions" in teacher_text
+    assert "Section B - Short-Answer Questions" in teacher_text
+    assert "Course Code:" in teacher_text
+    assert "CS-201-A" in teacher_text
+    assert "End of Examination" in teacher_text
+    assert "Instructions" in teacher_text
+    assert secret not in teacher_text
+    short_stem = (q_written.get("text") or "").strip()
+    if short_stem:
+        assert short_stem in teacher_text
+
+    hod_resp = client.get(f"/api/exams/{exam_id}/pdf", headers=_auth(client, HOD_CS))
+    assert hod_resp.status_code == 200, hod_resp.text
+    assert hod_resp.content[:4] == b"%PDF"
+    assert secret not in _pdf_text(hod_resp.content)
+
+
+def test_exam_pdf_forbidden_for_student_and_admin(client):
+    c1_id = _class_id(client, "CS-201-A", TEACHER_A)
+    exams = client.get(f"/api/exams?class_id={c1_id}", headers=_auth(client, TEACHER_A)).json()
+    exam_id = exams[0]["id"]
+
+    student = client.get(f"/api/exams/{exam_id}/pdf", headers=_auth(client, STUDENT_IN_C1))
+    assert student.status_code == 403
+
+    admin = client.get(f"/api/exams/{exam_id}/pdf", headers=_auth(client, ADMIN))
+    assert admin.status_code == 403
+
+
+def test_exam_pdf_forbidden_for_other_teacher(client):
+    c1_id = _class_id(client, "CS-201-A", TEACHER_A)
+    exams = client.get(f"/api/exams?class_id={c1_id}", headers=_auth(client, TEACHER_A)).json()
+    exam_id = exams[0]["id"]
+    resp = client.get(f"/api/exams/{exam_id}/pdf", headers=_auth(client, TEACHER_B))
+    assert resp.status_code == 403

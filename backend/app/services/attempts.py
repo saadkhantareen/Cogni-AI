@@ -1,10 +1,12 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi import HTTPException
+from pymongo import ReturnDocument
 
 from app.core.db import get_db, oid, to_out
 from app.core.deps import CurrentUser
 from app.services.exam_generator import is_mcq
+from app.services.exams import as_utc
 from app.services.grading import (
     effective_score,
     effective_total,
@@ -14,6 +16,14 @@ from app.services.grading import (
 from app.services.notify import log_activity, notify
 
 GRACE_SECONDS = 15
+# Leaving the exam once is a warning; the next leave submits the attempt.
+WARNING_LIMIT = 1
+PKT = timezone(timedelta(hours=5))  # Pakistan has no daylight saving
+
+
+def _pkt_label(value: datetime) -> str:
+    local = as_utc(value).astimezone(PKT)
+    return f"{local.day} {local:%b %Y}, {local:%I:%M %p}".replace(", 0", ", ") + " (Pakistan time)"
 
 
 async def _get_exam_or_404(db, exam_id: str) -> dict:
@@ -31,10 +41,10 @@ async def _get_attempt_or_404(db, attempt_id: str) -> dict:
 
 
 def _deadline(attempt: dict, exam: dict) -> datetime:
-    started_at = attempt["started_at"]
-    if started_at.tzinfo is None:
-        started_at = started_at.replace(tzinfo=UTC)
-    return started_at + timedelta(minutes=exam["duration_min"])
+    """Start + duration, cut short by the exam window's end when there is one."""
+    deadline = as_utc(attempt["started_at"]) + timedelta(minutes=exam["duration_min"])
+    closes_at = as_utc(exam.get("closes_at"))
+    return min(deadline, closes_at) if closes_at else deadline
 
 
 async def auto_close_if_expired(attempt: dict, exam: dict | None) -> dict:
@@ -80,9 +90,24 @@ async def start_attempt(student: CurrentUser, exam_id: str) -> dict:
         existing = await auto_close_if_expired(existing, exam)
         if existing["status"] == "submitted":
             raise HTTPException(status_code=400, detail="You have already submitted this exam.")
+        # Reopening an attempt (refresh, closed tab) means the student left the exam,
+        # unless the page already reported that exit as it closed.
+        if not _left_recently(existing):
+            existing = await _record_leave(existing, "resume")
+        if existing["status"] == "submitted":
+            raise HTTPException(
+                status_code=400,
+                detail="Your exam was submitted because you left it more than once.",
+            )
         return _attempt_start_response(existing, exam)
 
     now = datetime.now(UTC)
+    opens_at = as_utc(exam.get("opens_at"))
+    closes_at = as_utc(exam.get("closes_at"))
+    if opens_at and now < opens_at:
+        raise HTTPException(status_code=400, detail=f"This exam opens at {_pkt_label(opens_at)}.")
+    if closes_at and now >= closes_at:
+        raise HTTPException(status_code=400, detail=f"This exam closed at {_pkt_label(closes_at)}.")
     doc = {
         "exam_id": exam_id,
         "student_id": student.id,
@@ -133,6 +158,58 @@ async def save_answer(student: CurrentUser, attempt_id: str, qid: str, value) ->
     return to_out(attempt)
 
 
+RESUME_DEDUPE_SECONDS = 30
+
+
+def _left_recently(attempt: dict) -> bool:
+    """True when the page reported a leave moments ago (e.g. as it was refreshed)."""
+    events = attempt.get("integrity_events") or []
+    if not events or events[-1].get("type") not in ("tab_hide", "window_blur", "fullscreen_exit"):
+        return False
+    last_at = events[-1].get("at")
+    if not isinstance(last_at, datetime):
+        return False
+    return datetime.now(UTC) - as_utc(last_at) < timedelta(seconds=RESUME_DEDUPE_SECONDS)
+
+
+async def _record_leave(attempt: dict, event_type: str) -> dict:
+    """Count one leave on the server. The leave after the warning submits the attempt."""
+    db = get_db()
+    updated = await db.attempts.find_one_and_update(
+        {"_id": attempt["_id"], "status": "in_progress"},
+        {
+            "$inc": {"violation_count": 1},
+            "$push": {"integrity_events": {"type": event_type, "at": datetime.now(UTC)}},
+        },
+        return_document=ReturnDocument.AFTER,
+    )
+    if updated is None:  # already submitted by another request
+        return await db.attempts.find_one({"_id": attempt["_id"]}) or attempt
+    # Only the request that crosses the limit finalizes, so concurrent leaves grade once.
+    if updated["violation_count"] == WARNING_LIMIT + 1:
+        updated = await finalize_attempt(updated, end_reason="violations")
+    return updated
+
+
+async def record_leave(student: CurrentUser, attempt_id: str, event_type: str) -> dict:
+    db = get_db()
+    attempt = await _get_attempt_or_404(db, attempt_id)
+    if attempt["student_id"] != student.id:
+        raise HTTPException(status_code=403, detail="This is not your attempt.")
+    exam = await db.exams.find_one({"_id": oid(attempt["exam_id"])})
+    attempt = await auto_close_if_expired(attempt, exam)
+    if attempt["status"] == "in_progress":
+        attempt = await _record_leave(attempt, event_type)
+        if attempt["status"] == "submitted" and exam:
+            await log_activity(student, f"'{exam['title']}' auto-submitted after leaving the exam twice")
+    return {
+        "status": attempt["status"],
+        "violation_count": attempt.get("violation_count", 0),
+        "warning_limit": WARNING_LIMIT,
+        "end_reason": attempt.get("end_reason"),
+    }
+
+
 def _integrity_event_dicts(events: list | None) -> list[dict]:
     if not events:
         return []
@@ -164,9 +241,8 @@ async def submit_attempt(
         events = _integrity_event_dicts(integrity_events)
         existing_events = list(attempt.get("integrity_events") or [])
         merged_events = existing_events + events if events else existing_events or None
-        count = violation_count
-        if count is None and attempt.get("violation_count") is not None:
-            count = attempt.get("violation_count")
+        # The server's count wins; the client may only report more leaves, never fewer.
+        count = max(attempt.get("violation_count") or 0, violation_count or 0)
         attempt = await finalize_attempt(
             attempt,
             end_reason=end_reason,

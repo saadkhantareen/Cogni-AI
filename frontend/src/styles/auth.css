@@ -12,6 +12,22 @@
 .auth .body{padding-block:40px;padding-inline:clamp(16px,5vw,56px);display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:48px;align-content:start;animation:fadeUp .45s var(--ease-out) both}
 @media(max-width:1100px){.auth .body{grid-template-columns:1fr;max-width:640px}}
 .auth h1{font-size:28px;margin-bottom:6px}
+/* Right column: explains the product while the form sits on the left (v7 showed demo accounts here). */
+.auth .body>.auth-card{align-self:start}
+.auth-aside{min-width:0;max-width:760px;padding-top:6px}
+.auth-aside-eyebrow{font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--color-muted-foreground);margin:0 0 8px}
+.auth-aside h2{font-size:clamp(24px,2.6vw,34px);line-height:1.12;margin:0 0 8px}
+.auth-aside-lead{margin:0 0 24px}
+.auth-steps{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:12px}
+.auth-steps li{display:flex;gap:14px;align-items:flex-start;background:var(--color-card);border:1px solid var(--color-border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow-sm);transition:border-color var(--t-fast),transform var(--t-fast) var(--ease-out)}
+.auth-steps li:hover{border-color:var(--color-primary);transform:translateY(-1px)}
+.auth-step-n{flex:0 0 32px;height:32px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:14px;background:var(--color-primary);color:var(--color-on-primary)}
+.auth-steps b{display:block;font-size:15.5px;margin-bottom:2px}
+.auth-steps p{margin:0}
+.auth-roles{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+.auth-role{font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--color-muted);border:1px solid var(--color-border);color:var(--color-foreground)}
+.auth-aside-note{margin-bottom:0}
+@media(max-width:1100px){.auth-aside{display:none}}
 .auth-card-tools{display:flex;justify-content:flex-end;margin:0 0 4px}
 .auth-card-tools .btn.icon{min-height:38px;width:38px;padding:0}
 .field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;min-width:0}

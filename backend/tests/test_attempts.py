@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.main import app
 from app.prompts.grading import build_grading_user_prompt
 from app.services import grading as grading_service
-from tests.helpers import WORLD_PASSWORD, portal_for
+from tests.helpers import open_window, WORLD_PASSWORD, portal_for
 from app.services.llm import LLMClient, get_llm_client
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
@@ -45,6 +45,7 @@ def _publish_quiz(client, *, class_id, material_id, title, duration_min=30):
             "title": title,
             "kind": "Quiz",
             "duration_min": duration_min,
+            **open_window(),
             "material_ids": [material_id],
             "counts": {"MCQ": 1, "Short": 1},
         },

@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-LlmProvider = Literal["platform", "openrouter", "groq"]
+LlmProvider = Literal["platform", "vyceai", "openrouter", "groq"]
 
 
 class LlmModelOption(BaseModel):

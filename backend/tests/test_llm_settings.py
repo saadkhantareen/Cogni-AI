@@ -52,7 +52,9 @@ def test_teacher_get_default_platform(client):
     assert "api_key" not in body
     assert "api_key_enc" not in body
     providers = {p["id"] for p in body["catalog"]["providers"]}
-    assert providers == {"platform", "openrouter", "groq"}
+    assert providers == {"platform", "vyceai", "openrouter", "groq"}
+    assert llm_catalog.is_allowed_model("vyceai", "claude-sonnet-4-6")
+    assert llm_catalog.base_url_for_provider("vyceai").startswith("https://vyceai.com")
 
 
 def test_student_and_hod_cannot_access_llm_settings(client):

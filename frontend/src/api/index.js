@@ -325,6 +325,12 @@ export function submitAttempt(attemptId, body = {}) {
   return post(`/attempts/${attemptId}/submit`, payload)
 }
 
+/** Report that the student left fullscreen, the tab or the window. The server counts it;
+ * `keepalive` lets the request finish while the page is closing. */
+export function reportExamLeave(attemptId, type) {
+  return post(`/attempts/${attemptId}/leave`, { type }, { keepalive: true })
+}
+
 export function forfeitAttempt(attemptId, body = {}) {
   const payload = {
     reason: body.reason || 'exit',

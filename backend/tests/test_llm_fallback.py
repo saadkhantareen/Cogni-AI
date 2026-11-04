@@ -74,3 +74,25 @@ async def test_auth_error_does_not_fallback(monkeypatch):
     with pytest.raises(LLMRequestError, match="not configured correctly"):
         await client.json_complete("sys", "user")
     assert calls == ["google/gemma-4-31b-it:free"]
+
+
+@pytest.mark.asyncio
+async def test_fallback_after_invalid_json(monkeypatch):
+    """Free models sometimes return prose; try the next catalog model."""
+    from app.services.llm import LLMJSONError
+
+    client = _client(monkeypatch)
+    calls = []
+
+    async def fake_chat(messages, *, max_tokens, temperature, json_object, model=None):
+        calls.append(model)
+        if model == "google/gemma-4-31b-it:free":
+            return _Resp("sorry, I cannot help with that")
+        return _Resp('{"questions": [{"text": "ok"}]}')
+
+    monkeypatch.setattr(client, "_chat", fake_chat)
+    result = await client.json_complete("sys", "user")
+    assert result["questions"][0]["text"] == "ok"
+    assert calls[0] == "google/gemma-4-31b-it:free"
+    assert "openrouter/free" in calls
+    assert client.last_model_used == "openrouter/free"

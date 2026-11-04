@@ -10,6 +10,22 @@ Bloom = Literal["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Creat
 ExamKind = Literal["Quiz", "Midterm", "Final"]
 ExamStatus = Literal["draft", "pending", "returned", "approved", "published", "closed"]
 
+
+
+def check_window(opens_at: datetime | None, closes_at: datetime | None, duration_min: int) -> None:
+    """Exam availability window: both ends timezone-aware, end after start, long enough."""
+    if opens_at is None and closes_at is None:
+        return
+    if opens_at is None or closes_at is None:
+        raise ValueError("Set both the start and the end of the exam window.")
+    if opens_at.tzinfo is None or closes_at.tzinfo is None:
+        raise ValueError("Exam window times must include a timezone.")
+    if closes_at <= opens_at:
+        raise ValueError("The exam window must end after it starts.")
+    if (closes_at - opens_at).total_seconds() < duration_min * 60:
+        raise ValueError("The exam window is shorter than the paper's duration.")
+
+
 # Legacy fixed labels kept for older clients/tests.
 LEGACY_LABELS = ("MCQ", "Short", "Essay")
 
@@ -68,6 +84,8 @@ class ExamOut(OutBase):
     blueprint: dict | None = None
     history: list[HistoryEntry] = Field(default_factory=list)
     created_at: datetime
+    opens_at: datetime | None = None
+    closes_at: datetime | None = None
 
 
 def _normalize_blueprint_scope(model: "BlueprintRange | BlueprintPin") -> None:
@@ -182,6 +200,14 @@ class ExamGenerateRequest(BaseModel):
     total_marks: float | None = Field(default=None, gt=0, le=1000)
     weightage: list[BlueprintRange] | None = None
     pins: list[BlueprintPin] | None = None
+    # When students may sit the paper (sent with an offset, e.g. +05:00 for PKT).
+    opens_at: datetime
+    closes_at: datetime
+
+    @model_validator(mode="after")
+    def _check_window(self) -> Self:
+        check_window(self.opens_at, self.closes_at, self.duration_min)
+        return self
 
     @model_validator(mode="after")
     def _normalize_types(self) -> Self:
@@ -265,6 +291,8 @@ class ExamPatch(BaseModel):
     title: str | None = None
     duration_min: int | None = None
     ai_threshold: int | None = None
+    opens_at: datetime | None = None
+    closes_at: datetime | None = None
 
 
 class QuestionPatch(BaseModel):

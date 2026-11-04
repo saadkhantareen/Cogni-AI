@@ -1,0 +1,15 @@
+=== ALLOCATION (pin-aware bands) ===
+  pin    pages=[3] counts={'Long': 1}
+  weight pages=[1, 2, 3, 4] counts={'Long': 1}
+  weight pages=[5, 6, 7, 8, 9, 10] counts={'Long': 3}
+PASS mid remaining Long=1 after pin on slide 3
+
+=== COUNT FILL (MockLLM) ===
+requested {'MCQ': 2, 'Short': 10, 'Long': 1}
+got       {'MCQ': 2, 'Short': 10, 'Long': 1}
+fill warnings: ['Fill pass 1: requested 1 MCQ, 6 Short.']
+PASS exact totals after fill
+
+blueprint requested {'MCQ': 4, 'Short': 2, 'Long': 2}
+blueprint got       {'MCQ': 4, 'Short': 2, 'Long': 2}
+PASS blueprint generation meets totals

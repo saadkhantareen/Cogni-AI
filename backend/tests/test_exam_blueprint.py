@@ -16,7 +16,7 @@ from app.services.exam_blueprint import (
 )
 from app.services.exam_generator import generate_questions_with_blueprint
 from app.services.llm import MockLLM
-from tests.helpers import WORLD_PASSWORD, portal_for
+from tests.helpers import open_window, WORLD_PASSWORD, portal_for
 
 TEACHER = "ayesha.khan@umt.edu.pk"
 
@@ -140,6 +140,7 @@ def test_schema_rejects_bad_blueprint():
         "title": "Final",
         "kind": "Final",
         "duration_min": 60,
+        **open_window(),
         "material_ids": ["m1"],
         "types": [
             {"label": "MCQ", "count": 4, "format": "mcq", "marks": 2},
@@ -259,6 +260,7 @@ def test_generate_without_blueprint_still_works(client):
             "title": "No blueprint quiz",
             "kind": "Quiz",
             "duration_min": 20,
+            **open_window(),
             "material_ids": [mats[0]["id"]],
             "types": [
                 {"label": "MCQ", "count": 2, "format": "mcq", "marks": 2},

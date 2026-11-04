@@ -48,6 +48,8 @@ class LiveExamForStudent(BaseModel):
     duration_min: int
     question_count: int
     in_progress: bool
+    opens_at: datetime | None = None
+    closes_at: datetime | None = None
 
 
 class ReleasedResult(BaseModel):

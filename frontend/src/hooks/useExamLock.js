@@ -22,10 +22,22 @@ export async function requestExamFullscreen(el = document.documentElement) {
     throw new Error('Fullscreen is not supported in this browser.')
   }
   await req.call(target)
+  // Chrome/Edge: capture Esc and system shortcuts while fullscreen, so Esc has to be held
+  // to leave. Other browsers ignore this; leaving is still detected and counted.
+  try {
+    await navigator.keyboard?.lock?.()
+  } catch {
+    /* not supported */
+  }
   return true
 }
 
 export async function exitExamFullscreen() {
+  try {
+    navigator.keyboard?.unlock?.()
+  } catch {
+    /* not supported */
+  }
   if (!isFullscreen()) return
   const exit =
     document.exitFullscreen ||
@@ -171,10 +183,13 @@ export default function useExamLock({ active, onLeave }) {
       if (!activeRef.current) return
       const key = e.key?.toLowerCase?.() || ''
       const meta = e.metaKey || e.ctrlKey
-      if (meta && ['c', 'v', 'x', 'p', 'u', 's'].includes(key)) {
+      if (meta && ['c', 'v', 'x', 'p', 'u', 's', 't', 'n', 'w'].includes(key)) {
         e.preventDefault()
       }
-      if (e.key === 'PrintScreen') {
+      if (meta && key === 'tab') {
+        e.preventDefault()
+      }
+      if (e.key === 'PrintScreen' || e.key === 'F11') {
         e.preventDefault()
       }
       if (e.key === 'F12' || (meta && e.shiftKey && ['i', 'j', 'c'].includes(key))) {

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 
 from app.core.deps import CurrentUser, get_current_user, require_role
 from app.core.ratelimit import check_llm_rate_limit
@@ -36,6 +37,16 @@ async def list_exams(
 @router.get("/{exam_id}")
 async def get_exam(exam_id: str, user: CurrentUser = Depends(get_current_user)):
     return await exam_service.get_exam(user, exam_id)
+
+
+@router.get("/{exam_id}/pdf")
+async def download_exam_pdf(exam_id: str, user: CurrentUser = Depends(get_current_user)):
+    pdf_bytes, filename = await exam_service.get_exam_pdf(user, exam_id)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/{exam_id}")

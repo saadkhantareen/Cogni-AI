@@ -144,6 +144,7 @@ test.describe('Exam lock proof — hard fullscreen, no violations', () => {
       timeout: 20_000,
     })
     await expect(page.getByText(/hard fullscreen lock/i)).toBeVisible()
+    await expect(page.getByText(/timer keeps running/i)).toBeVisible()
     await expect(page.getByText(/Time limit is set by your teacher/i)).toBeVisible()
     await expect(page.getByText(/violation/i)).toHaveCount(0)
     await snap(page, 'LOCK01-gate-hard-lock', 'Gate: hard fullscreen lock, teacher time, no violations')
@@ -185,6 +186,7 @@ test.describe('Exam lock proof — hard fullscreen, no violations', () => {
     await expect(page.getByRole('heading', { name: /Exit exam\?/i })).toBeVisible({
       timeout: 10_000,
     })
+    await expect(page.getByText(/timer keeps running/i)).toBeVisible()
     await expect(page.getByText(/only attempt/i)).toBeVisible()
     await expect(page.locator('.exam-lock-overlay')).toHaveCount(0)
     await expect(page.getByText(/Violations:/i)).toHaveCount(0)

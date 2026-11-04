@@ -15,6 +15,7 @@ IntegrityEventType = Literal[
     "fullscreen_exit",
     "exit",
     "violations",
+    "resume",
 ]
 
 
@@ -69,6 +70,11 @@ class ForfeitIn(BaseModel):
     reason: ForfeitReason = "exit"
     integrity_events: list[IntegrityEvent] = Field(default_factory=list)
     violation_count: int | None = Field(default=None, ge=0)
+
+
+class LeaveIn(BaseModel):
+    type: Literal["tab_hide", "window_blur", "fullscreen_exit"]
+    at: datetime | None = None
 
 
 class FlagIn(BaseModel):

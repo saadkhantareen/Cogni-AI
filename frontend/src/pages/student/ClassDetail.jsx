@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import * as api from '../../api'
 import { ApiError } from '../../api/client'
+import { windowState } from '../../utils/pkTime'
 import { ShellError, ShellLoading } from '../../components/AppShell'
 import EmptyState from '../../components/EmptyState'
 import { useModal } from '../../components/Modal'
@@ -158,7 +159,8 @@ export default function ClassDetail() {
     return exams.filter((x) => {
       if (x.status !== 'published') return false
       const at = attemptByExam.get(x.id)
-      return !(at && at.status === 'submitted')
+      if (at && at.status === 'submitted') return false
+      return at?.status === 'in_progress' || ['open', 'none'].includes(windowState(x.opens_at, x.closes_at))
     })
   }, [exams, attemptByExam])
 

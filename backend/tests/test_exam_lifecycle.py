@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.main import app
-from tests.helpers import WORLD_PASSWORD, portal_for
+from tests.helpers import open_window, WORLD_PASSWORD, portal_for
 
 TEST_DB = os.environ.get("TEST_MONGO_DB", "cogni_test_dev")
 
@@ -42,6 +42,7 @@ def _generate(client, email, *, class_id, material_id, kind="Midterm", counts=No
             "title": title,
             "kind": kind,
             "duration_min": 30,
+            **open_window(),
             "material_ids": [material_id],
             "counts": counts,
         },

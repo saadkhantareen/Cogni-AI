@@ -135,6 +135,18 @@ export default function Review() {
   const maxMarks = exam ? examMaxMarks(exam) : 0
   const questions = exam?.questions || []
 
+  const onDownloadPdf = async () => {
+    setBusy('pdf')
+    try {
+      await api.downloadExamPdf(id)
+      toast('Paper PDF downloaded')
+    } catch (err) {
+      toast(err.message || 'Could not download PDF.', { type: 'error' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const onReturn = async () => {
     const cm = comment.trim()
     if (!cm) {
@@ -214,11 +226,21 @@ export default function Review() {
           </h1>
         }
         actions={
-          pending ? (
-            <a className="btn" href="#decision">
-              Go to decision <Icon name="chev" className="sm" />
-            </a>
-          ) : null
+          <>
+            <button
+              type="button"
+              className="btn"
+              onClick={onDownloadPdf}
+              disabled={!!busy}
+            >
+              {busy === 'pdf' ? 'Downloading…' : 'Download PDF'}
+            </button>
+            {pending ? (
+              <a className="btn" href="#decision">
+                Go to decision <Icon name="chev" className="sm" />
+              </a>
+            ) : null}
+          </>
         }
       />
 

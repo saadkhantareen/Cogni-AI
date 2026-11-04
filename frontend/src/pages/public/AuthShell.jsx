@@ -3,6 +3,15 @@ import ThemeButton from '../../components/ThemeButton'
 import Logo from '../../components/Logo'
 import { Icon } from '../../components/IconSprite'
 
+const STEPS = [
+  ['Upload', 'Teachers add a PDF, slides, a Word file or pasted notes. Scanned pages are read with built-in OCR.'],
+  ['Draft', 'The AI drafts questions tagged by Bloom level, topic and course learning outcome.'],
+  ['Review', 'The teacher edits the paper. The head of department approves it or sends it back with a comment.'],
+  ['Exam', 'Students sit a timed exam. Multiple choice is marked automatically; written answers are graded against a model answer.'],
+  ['Feedback', 'Teachers can override any score before releasing results. Students get topic-by-topic feedback and a study plan.'],
+]
+const ROLES = ['Admin', 'Head of department', 'Teacher', 'Student']
+
 /** Shared layout for public auth pages (login, register, setup, etc.). */
 export default function AuthShell({ title, subtitle, children, sideTitle, sideBody, titleAction }) {
   return (
@@ -41,6 +50,40 @@ export default function AuthShell({ title, subtitle, children, sideTitle, sideBo
             ) : null}
             {children}
           </div>
+          <section className="auth-aside" aria-labelledby="auth-aside-h">
+            <p className="auth-aside-eyebrow">How Cogni.ai works</p>
+            <h2 id="auth-aside-h">From course notes to a graded exam</h2>
+            <p className="small auth-aside-lead">
+              One workflow for four roles, with a person making every decision.
+            </p>
+            <ol className="auth-steps">
+              {STEPS.map(([name, text], i) => (
+                <li key={name}>
+                  <span className="auth-step-n" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                  <div>
+                    <b>{name}</b>
+                    <p className="small">{text}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="auth-roles" aria-label="Roles">
+              {ROLES.map((r) => (
+                <span key={r} className="auth-role">
+                  {r}
+                </span>
+              ))}
+            </div>
+            <div className="callout blue auth-aside-note">
+              <Icon name="info" />
+              <div>
+                The AI never changes a grade on its own. Writing-likelihood flags are advice for the
+                teacher, never an automatic penalty.
+              </div>
+            </div>
+          </section>
         </main>
       </div>
     </div>

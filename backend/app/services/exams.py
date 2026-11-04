@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from app.core.db import get_db, oid, to_out
 from app.core.deps import CurrentUser
+from app.schemas.exams import check_window
 from app.services import settings as settings_service
 from app.services.exam_blueprint import tag_chunks_with_material
 from app.services.exam_generator import (
@@ -96,6 +97,13 @@ async def _repeated_question_ids(exam: dict) -> list[str]:
 def _assert_teacher_owns(user: CurrentUser, exam: dict) -> None:
     if user.role != "teacher" or exam["teacher_id"] != user.id:
         raise HTTPException(status_code=403, detail="You do not own this exam.")
+
+
+def as_utc(value: datetime | None) -> datetime | None:
+    """Mongo returns naive datetimes that are really UTC; make them comparable."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def _assert_editable(exam: dict) -> None:
@@ -208,10 +216,17 @@ async def get_exam_pdf(user: CurrentUser, exam_id: str) -> tuple[bytes, str]:
     else:
         raise HTTPException(status_code=403, detail="Only teachers and HODs can download exam PDFs.")
 
-    class_label = f"{cls.get('code') or ''} · {cls.get('name') or ''}".strip(" ·")
+    class_code = (cls.get("code") or "").strip()
+    class_name = (cls.get("name") or "").strip()
+    class_label = f"{class_code} · {class_name}".strip(" ·")
     # Strip answers so the PDF is always the student paper.
     paper = _strip_for_student(exam)
-    return build_exam_pdf(paper, class_label=class_label or None)
+    return build_exam_pdf(
+        paper,
+        class_label=class_label or None,
+        class_code=class_code or None,
+        class_name=class_name or None,
+    )
 
 
 async def generate_exam(actor: CurrentUser, payload) -> tuple[dict, list[str]]:
@@ -337,6 +352,8 @@ async def generate_exam(actor: CurrentUser, payload) -> tuple[dict, list[str]]:
         "blueprint": blueprint,
         "history": [{"at": now, "by": actor.id, "text": f"Draft generated from {material_names}"}],
         "created_at": now,
+        "opens_at": as_utc(payload.opens_at),
+        "closes_at": as_utc(payload.closes_at),
     }
     result = await db.exams.insert_one(doc)
     doc["_id"] = result.inserted_id
@@ -353,9 +370,20 @@ async def generate_exam(actor: CurrentUser, payload) -> tuple[dict, list[str]]:
 async def update_exam(actor: CurrentUser, exam_id: str, patch) -> dict:
     exam = await _get_exam_or_404(exam_id)
     _assert_teacher_owns(actor, exam)
-    _assert_editable(exam)
-
     updates = {k: v for k, v in patch.model_dump(exclude_unset=True).items() if v is not None}
+    # The schedule isn't what the HOD reviewed, so an approved paper can still be rescheduled.
+    if not (exam["status"] == "approved" and updates and updates.keys() <= {"opens_at", "closes_at"}):
+        _assert_editable(exam)
+
+    for key in ("opens_at", "closes_at"):
+        if key in updates:
+            updates[key] = as_utc(updates[key])
+    if {"opens_at", "closes_at", "duration_min"} & updates.keys():
+        merged = {**exam, **updates}
+        try:
+            check_window(as_utc(merged.get("opens_at")), as_utc(merged.get("closes_at")), merged["duration_min"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     if updates:
         db = get_db()
         await db.exams.update_one({"_id": exam["_id"]}, {"$set": updates})
@@ -634,6 +662,12 @@ async def publish_exam(actor: CurrentUser, exam_id: str) -> dict:
     settings_doc = await settings_service.get_settings()
     if exam["status"] == "draft" and needs_approval(exam, settings_doc):
         raise HTTPException(status_code=400, detail="This paper needs HOD approval first.")
+    closes_at = as_utc(exam.get("closes_at"))
+    if closes_at is not None and closes_at <= datetime.now(UTC):
+        raise HTTPException(
+            status_code=400,
+            detail="This paper's exam window has already ended. Set a new date and time first.",
+        )
 
     db = get_db()
     await db.exams.update_one({"_id": exam["_id"]}, {"$set": {"status": "published"}})

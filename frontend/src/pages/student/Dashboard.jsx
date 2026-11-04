@@ -7,6 +7,7 @@ import EmptyState from '../../components/EmptyState'
 import ClassCard from '../../components/student/ClassCard'
 import JoinClass from '../../components/student/JoinClass'
 import { greetingLine, todayLong } from '../../utils/student'
+import { formatPkt, windowState } from '../../utils/pkTime'
 
 /** Notes from live exams + released results (matched by exam_id per class). */
 function notesForClass(cls, data, examIdsByClass) {
@@ -14,7 +15,13 @@ function notesForClass(cls, data, examIdsByClass) {
   const cid = cls.id
   ;(data.live_exams || [])
     .filter((x) => x.class_id === cid)
-    .forEach((x) => notes.push([`${x.title} is live`, 'p-blue']))
+    .forEach((x) =>
+      notes.push(
+        windowState(x.opens_at, x.closes_at) === 'upcoming'
+          ? [`${x.title} opens ${formatPkt(x.opens_at)}`, 'p-grey']
+          : [`${x.title} is live`, 'p-blue'],
+      ),
+    )
   const ids = new Set(examIdsByClass[cid] || [])
   ;(data.released_results || []).forEach((r) => {
     if (ids.has(r.exam_id)) {

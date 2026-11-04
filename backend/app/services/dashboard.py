@@ -1,11 +1,13 @@
 """Aggregate read endpoints for each role's home dashboard, plus the HOD
 department analytics page. Pure reads: no writes, no notifications."""
 
+from datetime import UTC, datetime
+
 from app.core.db import get_db, oid, to_out
 from app.core.deps import CurrentUser
 from app.services import classes as class_service
 from app.services.attempts import auto_close_if_expired
-from app.services.exams import get_checks
+from app.services.exams import as_utc, get_checks
 from app.services.exam_generator import is_mcq
 from app.services.grading import effective_score, effective_total
 
@@ -121,6 +123,7 @@ async def student_dashboard(student: CurrentUser) -> dict:
             async for e in db.exams.find({"class_id": {"$in": class_ids}, "status": "published"})
         ]
         exam_ids = [str(e["_id"]) for e in exams]
+        now = datetime.now(UTC)
         attempts = {
             a["exam_id"]: a
             async for a in db.attempts.find({"student_id": student.id, "exam_id": {"$in": exam_ids}})
@@ -132,6 +135,9 @@ async def student_dashboard(student: CurrentUser) -> dict:
                 attempt = await auto_close_if_expired(attempt, exam)
                 if attempt["status"] == "submitted":
                     continue
+            closes_at = as_utc(exam.get("closes_at"))
+            if attempt is None and closes_at and closes_at <= now:
+                continue  # window over and never started: nothing left to sit
             live_exams.append(
                 {
                     "id": exam_id,
@@ -142,6 +148,8 @@ async def student_dashboard(student: CurrentUser) -> dict:
                     "duration_min": exam["duration_min"],
                     "question_count": len(exam.get("questions", [])),
                     "in_progress": attempt is not None,
+                    "opens_at": as_utc(exam.get("opens_at")),
+                    "closes_at": closes_at,
                 }
             )
 

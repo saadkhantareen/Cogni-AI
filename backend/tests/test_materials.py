@@ -205,3 +205,69 @@ def test_delete_allowed_when_only_draft_exams_reference_material(client):
         f"/api/materials/{material_id}", headers=_auth(client, TEACHER_B)
     )
     assert follow_up.status_code == 404
+
+
+def _scanned_text_pdf() -> bytes:
+    """Image-only PDF (no text layer) with enough words to clear the OCR threshold."""
+    import io
+
+    import pymupdf
+    from PIL import Image, ImageDraw, ImageFont
+
+    lines = [
+        "Normalization removes redundancy from relational tables.",
+        "A primary key uniquely identifies every row in a table.",
+        "Indexes speed up queries but slow down inserts and updates.",
+        "Transactions guarantee atomicity consistency isolation durability.",
+    ]
+    img = Image.new("RGB", (1400, 420), "white")
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default(size=36)
+    for i, line in enumerate(lines):
+        draw.text((30, 20 + i * 90), line, fill="black", font=font)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_image(pymupdf.Rect(20, 40, 575, 205), stream=buf.getvalue())
+    out = io.BytesIO()
+    doc.save(out)
+    return out.getvalue()
+
+
+def test_upload_scanned_pdf_is_read_by_local_tesseract(client, monkeypatch):
+    from app.services import ocr_service
+
+    if not ocr_service.tesseract_available():
+        pytest.skip("Tesseract binary not installed")
+    # Must never reach an LLM: fail loudly if it tries.
+    from app.services import llm
+
+    monkeypatch.setattr(llm, "get_llm_client", lambda: (_ for _ in ()).throw(AssertionError("LLM used for OCR")))
+    c1_id = _class_id(client, "CS-201-A", TEACHER_A)
+    resp = client.post(
+        f"/api/classes/{c1_id}/materials",
+        files={"file": ("scan.pdf", _scanned_text_pdf(), "application/pdf")},
+        headers=_auth(client, TEACHER_A),
+    )
+    assert resp.status_code in (200, 201), resp.text
+    body = resp.json()
+    assert body["kind"] == "pdf"
+    detail = client.get(f"/api/materials/{body['id']}", headers=_auth(client, TEACHER_A)).json()
+    text = str(detail).lower()
+    assert "normalization" in text and "primary key" in text
+
+
+def test_upload_scanned_pdf_without_tesseract_is_clear_400(client, monkeypatch):
+    from app.services import ocr_service
+
+    monkeypatch.setattr(ocr_service, "tesseract_available", lambda: False)
+    c1_id = _class_id(client, "CS-201-A", TEACHER_A)
+    resp = client.post(
+        f"/api/classes/{c1_id}/materials",
+        files={"file": ("scan.pdf", sample_scanned_pdf(), "application/pdf")},
+        headers=_auth(client, TEACHER_A),
+    )
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "SCANNED_PDF"
+    assert "tesseract" in resp.json()["detail"].lower()

@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from tests.support.world import TEST_PASSWORD
 
 WORLD_PASSWORD = TEST_PASSWORD
+
+def open_window(start_offset_min: int = -60, end_offset_min: int = 24 * 60) -> dict[str, str]:
+    """An exam window around now, as the generate form sends it (PKT offset)."""
+    pkt = datetime.now(UTC).astimezone(timezone(timedelta(hours=5)))
+    return {
+        "opens_at": (pkt + timedelta(minutes=start_offset_min)).isoformat(),
+        "closes_at": (pkt + timedelta(minutes=end_offset_min)).isoformat(),
+    }
+
 
 # Fixture-world personas (see tests/support/world.py).
 PERSONAS = {
@@ -189,6 +199,7 @@ def make_exam_draft(
         "title": title,
         "kind": kind,
         "duration_min": duration_min,
+        **open_window(),
         "material_ids": material_ids,
         "counts": counts or {"MCQ": 2, "Short": 1},
     }

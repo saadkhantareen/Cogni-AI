@@ -1,4 +1,4 @@
-"""Curated free chat models for teacher BYOK (exam generation).
+"""Curated chat models for teacher BYOK (exam generation).
 
 Embeddings, rerank, TTS, and safety-only models are intentionally omitted.
 """
@@ -7,10 +7,16 @@ from __future__ import annotations
 
 from typing import Literal
 
-LlmProviderChoice = Literal["platform", "openrouter", "groq"]
+LlmProviderChoice = Literal["platform", "vyceai", "openrouter", "groq"]
 
+VYCEAI_BASE_URL = "https://vyceai.com/v1"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
+# Platform / VyceAI paid chat models (OpenAI-compatible).
+VYCEAI_CHAT_MODELS: list[dict[str, str]] = [
+    {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6"},
+]
 
 # Chat / instruct free models that can return exam JSON.
 # Laguna S was removed from OpenRouter; Nemotron Lightning often returns empty.
@@ -31,12 +37,15 @@ GROQ_FREE_CHAT_MODELS: list[dict[str, str]] = [
     {"id": "gemma2-9b-it", "label": "Gemma 2 9B IT"},
 ]
 
+_VYCEAI_IDS = frozenset(m["id"] for m in VYCEAI_CHAT_MODELS)
 _OPENROUTER_IDS = frozenset(m["id"] for m in OPENROUTER_FREE_CHAT_MODELS)
 _GROQ_IDS = frozenset(m["id"] for m in GROQ_FREE_CHAT_MODELS)
 
 
 def models_for_provider(provider: str) -> list[dict[str, str]]:
     p = (provider or "").strip().lower()
+    if p == "vyceai":
+        return list(VYCEAI_CHAT_MODELS)
     if p == "openrouter":
         return list(OPENROUTER_FREE_CHAT_MODELS)
     if p == "groq":
@@ -55,11 +64,14 @@ def fallback_models_for_provider(provider: str, primary_model: str) -> list[str]
     """
     primary = (primary_model or "").strip()
     ordered: list[str] = []
-    if (provider or "").strip().lower() == "openrouter":
+    p = (provider or "").strip().lower()
+    if p == "openrouter":
         preferred = ["openrouter/free", "nvidia/nemotron-3-ultra-550b-a55b:free"]
         ordered = preferred + [m["id"] for m in OPENROUTER_FREE_CHAT_MODELS]
-    elif (provider or "").strip().lower() == "groq":
+    elif p == "groq":
         ordered = [m["id"] for m in GROQ_FREE_CHAT_MODELS]
+    elif p == "vyceai":
+        ordered = [m["id"] for m in VYCEAI_CHAT_MODELS]
     seen: set[str] = set()
     out: list[str] = []
     for mid in ordered:
@@ -74,6 +86,8 @@ def is_allowed_model(provider: str, model: str) -> bool:
     mid = (model or "").strip()
     if not mid:
         return False
+    if p == "vyceai":
+        return mid in _VYCEAI_IDS
     if p == "openrouter":
         return mid in _OPENROUTER_IDS
     if p == "groq":
@@ -83,6 +97,8 @@ def is_allowed_model(provider: str, model: str) -> bool:
 
 def base_url_for_provider(provider: str) -> str:
     p = (provider or "").strip().lower()
+    if p == "vyceai":
+        return VYCEAI_BASE_URL
     if p == "openrouter":
         return OPENROUTER_BASE_URL
     if p == "groq":
@@ -95,9 +111,16 @@ def catalog_payload() -> dict:
         "providers": [
             {
                 "id": "platform",
-                "label": "Platform default",
+                "label": "Platform default (VyceAI Claude)",
                 "models": [],
                 "needs_api_key": False,
+            },
+            {
+                "id": "vyceai",
+                "label": "VyceAI",
+                "models": VYCEAI_CHAT_MODELS,
+                "needs_api_key": True,
+                "key_help_url": "https://vyceai.com",
             },
             {
                 "id": "openrouter",

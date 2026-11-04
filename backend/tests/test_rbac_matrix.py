@@ -16,7 +16,7 @@ from __future__ import annotations
 import pytest
 
 from app.main import app
-from tests.helpers import WORLD_PASSWORD, PERSONAS, login_as
+from tests.helpers import open_window, WORLD_PASSWORD, PERSONAS, login_as
 
 ROLES = ("anonymous", "student", "teacher", "hod", "admin")
 
@@ -97,6 +97,7 @@ ALLOWED_ROLES: dict[tuple[str, str], set[str]] = {
     ("PUT", "/api/attempts/{attempt_id}/answers"): {"student"},
     ("POST", "/api/attempts/{attempt_id}/submit"): {"student"},
     ("POST", "/api/attempts/{attempt_id}/forfeit"): {"student"},
+    ("POST", "/api/attempts/{attempt_id}/leave"): {"student"},
     ("GET", "/api/attempts/mine"): {"student"},
     ("GET", "/api/attempts/{attempt_id}"): {"student"},
     ("POST", "/api/materials/{material_id}/ask"): {"student"},
@@ -296,6 +297,7 @@ def _payload_for(method: str, path: str, world: dict) -> dict | None:
             "title": "RBAC gen",
             "kind": "Quiz",
             "duration_min": 20,
+            **open_window(),
             "material_ids": [],
             "counts": {"MCQ": 1},  # valid shape; empty materials → 400 for owner
         },
@@ -305,6 +307,7 @@ def _payload_for(method: str, path: str, world: dict) -> dict | None:
         ("POST", "/api/exams/{exam_id}/approve"): {},
         ("POST", "/api/exams/{exam_id}/return"): {"comment": "rbac return"},
         ("PUT", "/api/exams/{exam_id}/threshold"): {"value": 70},
+        ("POST", "/api/attempts/{attempt_id}/leave"): {"type": "tab_hide"},
         ("PUT", "/api/attempts/{attempt_id}/answers"): {
             "qid": world["qid"],
             "value": 0,

@@ -232,6 +232,18 @@ body.exam-mode .topnav .tlogo{pointer-events:none}
 body.exam-mode .topnav .pop-wrap,
 body.exam-mode .topnav .theme-btn{opacity:.45;pointer-events:none}
 body.exam-mode .main{padding-block:16px 48px}
+/* Shown instead of the paper while the student is outside the fullscreen lock. */
+.exam-lockscreen{position:fixed;inset:0;z-index:2100;display:grid;place-items:center;padding:24px;background:var(--color-background)}
+.exam-lockscreen-box{max-width:560px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px}
+.exam-lockscreen-box>.i{width:48px;height:48px;color:var(--color-destructive)}
+.exam-lockscreen-box h1{font-size:clamp(26px,4vw,36px);margin:0}
+.exam-lockscreen-box p{margin:0;font-size:16.5px;line-height:1.55}
+.exam-lockscreen-box .btn{min-height:48px;padding-inline:24px}
+.exam-rules{border:2px solid var(--color-destructive);background:var(--color-destructive-muted);border-radius:var(--radius);padding:18px 20px;margin:0 0 18px}
+.exam-rules h3{display:flex;align-items:center;gap:8px;font-size:18px;margin:0 0 10px;color:var(--color-destructive)}
+.exam-rules ul{margin:0 0 14px;padding-left:20px;display:grid;gap:6px;font-size:15px;color:var(--color-foreground)}
+.exam-agree{display:flex;gap:10px;align-items:flex-start;font-weight:600;font-size:15px;cursor:pointer}
+.exam-agree input{width:20px;height:20px;margin-top:1px;flex-shrink:0;accent-color:var(--color-destructive)}
 .exam-lock-overlay{
   position:fixed;inset:0;z-index:2000;
   display:flex;align-items:center;justify-content:center;

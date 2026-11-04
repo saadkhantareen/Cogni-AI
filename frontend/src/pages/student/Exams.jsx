@@ -11,6 +11,7 @@ import {
   formatTeacherName,
 } from '../../utils/student'
 import { pctColor } from '../../utils/status'
+import { formatPktRange, windowState } from '../../utils/pkTime'
 
 /**
  * Student exams list (v7 `P['s-exams']`).
@@ -74,7 +75,9 @@ export default function Exams({ classId = null }) {
     return exams.filter((x) => {
       if (x.status !== 'published') return false
       const at = attemptByExam.get(x.id)
-      return !(at && at.status === 'submitted')
+      if (at && at.status === 'submitted') return false
+      // A window that ended before the student started leaves nothing to sit.
+      return at?.status === 'in_progress' || windowState(x.opens_at, x.closes_at) !== 'closed'
     })
   }, [exams, attemptByExam])
 
@@ -129,15 +132,19 @@ export default function Exams({ classId = null }) {
             const at = attemptByExam.get(x.id)
             const c = classById.get(x.class_id)
             const teacher = formatTeacherName()
+            const upcomingWin = windowState(x.opens_at, x.closes_at) === 'upcoming'
             return (
               <div className="lrow" key={x.id}>
-                <Pill label="Live" tone="p-blue" />
+                <Pill label={upcomingWin ? 'Opens later' : 'Live'} tone={upcomingWin ? 'p-grey' : 'p-blue'} />
                 <div className="grow">
                   <b>{x.title}</b>
                   <div className="small">
                     {c?.code || '—'} · {teacher} · {x.questions?.length ?? x.question_count ?? 0} Q ·{' '}
                     {x.duration_min} min
                   </div>
+                  {x.opens_at && x.closes_at ? (
+                    <div className="small">{formatPktRange(x.opens_at, x.closes_at)}</div>
+                  ) : null}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                   <button
@@ -145,7 +152,7 @@ export default function Exams({ classId = null }) {
                     className="btn small primary"
                     onClick={() => navigate(`/app/student/exams/${x.id}/take`)}
                   >
-                    {at?.status === 'in_progress' ? 'Resume' : 'Start exam'}
+                    {at?.status === 'in_progress' ? 'Resume' : upcomingWin ? 'View details' : 'Start exam'}
                   </button>
                   {at?.status === 'in_progress' ? (
                     <span className="small" style={{ color: 'var(--color-muted-foreground)', textAlign: 'right' }}>

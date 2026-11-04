@@ -12,8 +12,8 @@ const ModalContext = createContext(null)
 
 /**
  * Context modal matching v7 `openModal` / `closeModal`.
- * Esc and backdrop click close; focuses first input (or first action button).
- * openModal(node, { onClose }) — onClose runs once when the modal is dismissed.
+ * Esc and backdrop click close by default; focuses first input (or first action button).
+ * openModal(node, { onClose, dismissOnBackdrop }) — onClose runs once when dismissed.
  */
 export function ModalProvider({ children }) {
   const [content, setContent] = useState(null)
@@ -22,6 +22,7 @@ export function ModalProvider({ children }) {
   const boxRef = useRef(null)
   const closeTimer = useRef(null)
   const onCloseRef = useRef(null)
+  const dismissOnBackdropRef = useRef(true)
   const open = content != null || closing
 
   const contentRef = useRef(null)
@@ -38,6 +39,7 @@ export function ModalProvider({ children }) {
   const finishClose = useCallback(() => {
     const cb = onCloseRef.current
     onCloseRef.current = null
+    dismissOnBackdropRef.current = true
     setContent(null)
     setClosing(false)
     if (lastFocus.current && document.contains(lastFocus.current)) {
@@ -60,6 +62,7 @@ export function ModalProvider({ children }) {
     setClosing(false)
     if (node != null) lastFocus.current = document.activeElement
     onCloseRef.current = options.onClose || null
+    dismissOnBackdropRef.current = options.dismissOnBackdrop !== false
     setContent(node)
   }, [])
 
@@ -98,7 +101,9 @@ export function ModalProvider({ children }) {
         className={`modal-bg${closing ? ' closing' : ''}`}
         hidden={!open}
         onClick={(e) => {
-          if (e.target === e.currentTarget) closeModal()
+          if (e.target !== e.currentTarget) return
+          if (!dismissOnBackdropRef.current) return
+          closeModal()
         }}
       >
         <div

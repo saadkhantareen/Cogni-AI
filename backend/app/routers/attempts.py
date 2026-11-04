@@ -1,7 +1,15 @@
 from fastapi import APIRouter, Depends, Query
 
 from app.core.deps import CurrentUser, require_role
-from app.schemas.attempts import AnswerIn, FlagIn, ForfeitIn, OverrideIn, SubmitIn, ThresholdIn
+from app.schemas.attempts import (
+    AnswerIn,
+    FlagIn,
+    ForfeitIn,
+    LeaveIn,
+    OverrideIn,
+    SubmitIn,
+    ThresholdIn,
+)
 from app.services import attempts as attempt_service
 from app.services import feedback as feedback_service
 
@@ -34,6 +42,14 @@ async def submit_attempt(
         integrity_events=body.integrity_events,
         violation_count=body.violation_count,
     )
+
+
+@router.post("/api/attempts/{attempt_id}/leave")
+async def record_leave(
+    attempt_id: str, payload: LeaveIn, student: CurrentUser = Depends(require_role("student"))
+):
+    """The exam page reports each time the student leaves fullscreen, the tab or the window."""
+    return await attempt_service.record_leave(student, attempt_id, payload.type)
 
 
 @router.post("/api/attempts/{attempt_id}/forfeit")

@@ -1,11 +1,9 @@
 """Extract page-tagged text from PDF, DOCX, and PPTX uploads.
-Scanned PDFs fall back to multimodal OCR via OpenRouter."""
+Scanned PDFs fall back to local Tesseract OCR (CPU, no LLM)."""
 
 from __future__ import annotations
 
-import base64
 import io
-import re
 from collections import Counter
 
 from fastapi import HTTPException
@@ -18,7 +16,7 @@ from app.services.pdf import (
 
 PDF_MAGIC = b"%PDF"
 DOCX_MAGIC = b"PK"  # zip
-MAX_OCR_PAGES = 12
+MAX_OCR_PAGES = 30  # CPU OCR cost grows per page; cap the work per upload
 
 
 def _ext(filename: str) -> str:
@@ -129,84 +127,33 @@ def extract_pdf_text_pages(data: bytes) -> list[dict]:
     return pages
 
 
-def _render_pdf_page_pngs(data: bytes, *, max_pages: int = MAX_OCR_PAGES) -> list[bytes]:
-    try:
-        import pymupdf
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail="OCR support is not installed.") from exc
-    try:
-        doc = pymupdf.open(stream=data, filetype="pdf")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Could not open this PDF for OCR.") from exc
-    images: list[bytes] = []
-    try:
-        for i, page in enumerate(doc):
-            if i >= max_pages:
-                break
-            pix = page.get_pixmap(matrix=pymupdf.Matrix(1.5, 1.5), alpha=False)
-            images.append(pix.tobytes("png"))
-    finally:
-        doc.close()
-    if not images:
-        raise HTTPException(status_code=400, detail="This PDF has no pages to read.")
-    return images
-
-
 async def ocr_pdf_pages(data: bytes) -> list[dict]:
-    """Use the multimodal OCR model to read scanned PDF pages."""
-    from app.services.llm import LLMError, OpenAIClient, get_llm_client
+    """Read scanned PDF pages locally with Tesseract (no LLM, no network)."""
+    from fastapi.concurrency import run_in_threadpool
 
-    client = get_llm_client()
-    if not isinstance(client, OpenAIClient):
-        # detail dict with code is passed through by http_exception_handler
+    from app.services import ocr_service
+
+    if not ocr_service.tesseract_available():
         raise HTTPException(
             status_code=400,
             detail={
                 "detail": (
-                    "This PDF looks like scanned images. OCR needs a live AI provider. "
-                    "Paste the text instead, or configure OpenRouter."
+                    "This PDF looks like scanned images and the server's OCR engine "
+                    "(Tesseract) is not installed. Paste the text instead."
                 ),
                 "code": "SCANNED_PDF",
             },
         )
-
-    pngs = _render_pdf_page_pngs(data)
-    pages: list[dict] = []
-    # Process in small batches to stay within free-tier limits
-    batch_size = 2
-    for start in range(0, len(pngs), batch_size):
-        batch = pngs[start : start + batch_size]
-        b64s = [base64.b64encode(p).decode("ascii") for p in batch]
-        page_nos = list(range(start + 1, start + 1 + len(batch)))
-        prompt = (
-            "You are an OCR engine for course material. Transcribe ALL readable text "
-            f"from these slide/page image(s) (pages {page_nos[0]}–{page_nos[-1]}). "
-            "Preserve headings and bullet structure. Return plain text only. "
-            "Separate pages with a line that is exactly: ===PAGE n=== where n is the page number."
-        )
-        try:
-            text = await client.vision_text(prompt, b64s, max_tokens=3500)
-        except LLMError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-        split = re.split(r"===PAGE\s*(\d+)===", text)
-        if len(split) >= 3:
-            # split = [preamble, num, body, num, body, ...]
-            for j in range(1, len(split), 2):
-                num = int(split[j])
-                body = _normalize_whitespace(split[j + 1] if j + 1 < len(split) else "")
-                if body:
-                    pages.append({"page": num, "text": body})
-        else:
-            # Fallback: assign whole batch text to first page in batch
-            body = _normalize_whitespace(text)
-            if body:
-                pages.append({"page": page_nos[0], "text": body})
-
+    raw = await run_in_threadpool(ocr_service.ocr_pdf_pages, data, max_pages=MAX_OCR_PAGES)
+    pages = [{"page": p["page"], "text": _normalize_whitespace(p["text"])} for p in raw]
     total = sum(len(p["text"]) for p in pages)
     if total < MIN_TEXT_CHARS:
         raise HTTPException(
             status_code=400,
-            detail="OCR could not read enough text from this PDF. Try a clearer scan or paste notes.",
+            detail={
+                "detail": "OCR could not read enough text from this PDF. Try a clearer scan or paste notes.",
+                "code": "SCANNED_PDF",
+            },
         )
     return pages
 

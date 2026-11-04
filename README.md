@@ -156,7 +156,7 @@ Use **two Vercel projects** from the same GitHub repo (recommended).
 | `JWT_SECRET` | ≥32 random chars |
 | `LLM_PROVIDER` | `openai` |
 | `LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
-| `LLM_MODEL` | `poolside/laguna-s-2.1:free` (OpenRouter free; prefer low-reasoning models for JSON exams) |
+| `LLM_MODEL` | `openrouter/free` (or another low-reasoning OpenRouter free model; many older `:free` slugs are retired) |
 | `LLM_OCR_MODEL` | `nvidia/nemotron-3.5-super-vl:free` |
 | `LLM_API_KEY` | your OpenRouter key |
 | `CORS_ORIGINS` | frontend URL (set after step C) |

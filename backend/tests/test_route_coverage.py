@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.main import app
-from tests.helpers import WORLD_PASSWORD, login_as, upload_material, portal_for
+from tests.helpers import open_window, WORLD_PASSWORD, login_as, upload_material, portal_for
 
 pytestmark = pytest.mark.api
 
@@ -80,6 +80,7 @@ def test_all_openapi_routes_reachable(client, hit_routes):
             "title": f"Cov draft {tag}",
             "kind": "Midterm",
             "duration_min": 30,
+            **open_window(),
             "material_ids": [mat_id],
             "counts": {"MCQ": 2, "Short": 1},
         },
@@ -99,6 +100,7 @@ def test_all_openapi_routes_reachable(client, hit_routes):
             "title": f"Cov quiz {tag}",
             "kind": "Quiz",
             "duration_min": 20,
+            **open_window(),
             "material_ids": [material_id],
             "counts": {"MCQ": 1, "Short": 1},
         },
@@ -136,6 +138,7 @@ def test_all_openapi_routes_reachable(client, hit_routes):
             "title": f"Cov delete {tag}",
             "kind": "Quiz",
             "duration_min": 15,
+            **open_window(),
             "material_ids": [mat_id],
             "counts": {"MCQ": 1},
         },
@@ -181,6 +184,7 @@ def test_all_openapi_routes_reachable(client, hit_routes):
             "title": f"Cov pending {tag}",
             "kind": "Midterm",
             "duration_min": 40,
+            **open_window(),
             "material_ids": [material_id],
             "counts": {"MCQ": 1, "Short": 1},
         },
@@ -197,6 +201,7 @@ def test_all_openapi_routes_reachable(client, hit_routes):
             "title": f"Cov return {tag}",
             "kind": "Midterm",
             "duration_min": 40,
+            **open_window(),
             "material_ids": [material_id],
             "counts": {"MCQ": 1, "Short": 1},
         },
@@ -325,6 +330,7 @@ def test_all_openapi_routes_reachable(client, hit_routes):
             "title": f"Cov gen2 {tag}",
             "kind": "Quiz",
             "duration_min": 10,
+            **open_window(),
             "material_ids": [mat_id],
             "counts": {"MCQ": 1},
         }),
@@ -351,6 +357,7 @@ def test_all_openapi_routes_reachable(client, hit_routes):
             if quiz["questions"][0]["type"] == "MCQ"
             else "x",
         }),
+        ("POST", f"/api/attempts/{attempt_id}/leave", student, {"type": "tab_hide"}),
         ("POST", f"/api/attempts/{attempt_id}/submit", student, None),
         ("POST", f"/api/attempts/{attempt_id}/forfeit", student, {"reason": "exit"}),
         ("GET", "/api/attempts/mine", student, None),

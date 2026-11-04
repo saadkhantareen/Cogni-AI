@@ -6,7 +6,6 @@ import { useAuth } from '../../auth/AuthContext'
 import { ShellError, ShellLoading } from '../../components/AppShell'
 import { useConfirm } from '../../components/ConfirmModal'
 import EmptyState from '../../components/EmptyState'
-import Field from '../../components/Field'
 import { Icon } from '../../components/IconSprite'
 import { useModal } from '../../components/Modal'
 import TemporaryPasswordDialog from '../../components/TemporaryPasswordDialog'
@@ -17,7 +16,7 @@ import { useToast } from '../../components/Toast'
 import { roleTabFilter } from '../../utils/admin'
 
 /**
- * Admin users (v7 `P['a-users']`) with inline role/dept selects and Add user modal.
+ * Admin users (v7 `P['a-users']`) with inline role/dept selects.
  */
 export default function Users() {
   const { user: me } = useAuth()
@@ -144,25 +143,6 @@ export default function Users() {
     }
   }
 
-  function openAddUser() {
-    openModal(
-      <AddUserForm
-        depts={depts}
-        closeModal={closeModal}
-        toast={toast}
-        onCreated={(created, temporaryPassword) => {
-          setUsers((prev) => [...prev, created])
-          closeModal()
-          if (created.role === 'admin') setTab('admins')
-          else if (created.role === 'student') setTab('students')
-          else setTab('teachers')
-          toast(`${created.name} added`)
-          showTempPassword(`${created.name} · ${created.email}`, temporaryPassword)
-        }}
-      />,
-    )
-  }
-
   if (loading) return <ShellLoading label="Loading users…" />
   if (error) {
     return (
@@ -175,19 +155,14 @@ export default function Users() {
       <PageTop
         title="Users"
         actions={
-          <>
-            <button type="button" className="btn primary" onClick={openAddUser}>
-              <Icon name="plus" className="sm" />
-              Add user
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => navigate('/app/admin/users/new')}
-            >
-              Add staff
-            </button>
-          </>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={() => navigate('/app/admin/users/new')}
+          >
+            <Icon name="plus" className="sm" />
+            Add staff
+          </button>
         }
       />
 
@@ -214,7 +189,7 @@ export default function Users() {
         />
         {tab === 'students' ? (
           <span className="small">
-            Students create their own accounts from the sign-in page.
+            Students can self-register, or you can add them with Add staff.
           </span>
         ) : null}
       </div>
@@ -341,112 +316,6 @@ export default function Users() {
         </div>
       </div>
       {!users.length ? <EmptyState>No users yet.</EmptyState> : null}
-    </>
-  )
-}
-
-function AddUserForm({ depts, closeModal, toast, onCreated }) {
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [role, setRole] = useState('teacher')
-  const [deptId, setDeptId] = useState(depts[0]?.id || '')
-  const [errors, setErrors] = useState({})
-  const [busy, setBusy] = useState(false)
-
-  async function submit() {
-    const next = {}
-    const n = name.trim()
-    const em = email.trim().toLowerCase()
-    if (!n) next.name = "Enter the person's full name"
-    if (!/.+@.+\..+/.test(em)) next.email = 'Enter a valid email, e.g. name@school.edu'
-    if (role !== 'admin' && !deptId) next.dept = 'Choose a department'
-    setErrors(next)
-    if (Object.keys(next).length) return
-
-    setBusy(true)
-    try {
-      const res = await api.createAdminUser({
-        name: n,
-        email: em,
-        role,
-        dept_id: role === 'admin' ? null : deptId,
-      })
-      onCreated(res.user, res.temporary_password)
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Could not add user.'
-      if (err instanceof ApiError && err.status === 409) setErrors({ email: msg })
-      else {
-        toast(msg, { type: 'error' })
-        setBusy(false)
-      }
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <h3>Add user</h3>
-      <Field id="n-name" label="Full name" error={errors.name}>
-        <input
-          id="n-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          disabled={busy}
-        />
-      </Field>
-      <Field id="n-email" label="Email" error={errors.email}>
-        <input
-          id="n-email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={busy}
-        />
-      </Field>
-      <div className="grid g2e">
-        <Field id="n-role" label="Role">
-          <select
-            id="n-role"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            disabled={busy}
-          >
-            <option value="student">Student</option>
-            <option value="teacher">Teacher</option>
-            <option value="hod">HOD</option>
-            <option value="admin">Admin</option>
-          </select>
-        </Field>
-        <Field id="n-dept" label="Department" error={errors.dept}>
-          <select
-            id="n-dept"
-            value={deptId}
-            onChange={(e) => setDeptId(e.target.value)}
-            disabled={busy || role === 'admin'}
-          >
-            {depts.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
-      <p className="small">A temporary password is generated and shown once after you add the user.</p>
-      <div className="acts">
-        <button type="button" className="btn" onClick={closeModal} disabled={busy}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={`btn primary${busy ? ' busy' : ''}`}
-          onClick={submit}
-          disabled={busy}
-          aria-busy={busy}
-        >
-          {busy ? 'Adding…' : 'Add user'}
-        </button>
-      </div>
     </>
   )
 }

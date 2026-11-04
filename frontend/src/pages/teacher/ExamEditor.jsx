@@ -10,6 +10,7 @@ import PageTop from '../../components/PageTop'
 import Panel from '../../components/Panel'
 import Pill from '../../components/Pill'
 import QuestionCard from '../../components/QuestionCard'
+import ExamWindowCard from '../../components/teacher/ExamWindowCard'
 import { useToast } from '../../components/Toast'
 import { formatShortDate } from '../../utils/format'
 import { BLOOM_SPREAD, examMaxMarks, isMcqQuestion, needsApproval } from '../../utils/teacher'
@@ -437,6 +438,18 @@ export default function ExamEditor() {
     }
   }
 
+  const onDownloadPdf = async () => {
+    setBusyAction('pdf')
+    try {
+      await api.downloadExamPdf(id)
+      toast('Paper PDF downloaded')
+    } catch (err) {
+      toast(err.message || 'Could not download PDF.', { type: 'error' })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   if (loading) return <ShellLoading label="Loading exam…" />
   if (error) {
     return <ShellError message={error.message || 'Exam not found.'} onRetry={load} />
@@ -444,10 +457,21 @@ export default function ExamEditor() {
   if (!exam) return <EmptyState>Exam not found.</EmptyState>
 
   const status = exam.status
+  const downloadBtn = (
+    <button
+      type="button"
+      className="btn"
+      onClick={onDownloadPdf}
+      disabled={!!busyAction}
+    >
+      {busyAction === 'pdf' ? 'Downloading…' : 'Download PDF'}
+    </button>
+  )
   let acts = null
   if (editable) {
     acts = (
       <>
+        {downloadBtn}
         <button
           type="button"
           className="btn ghost"
@@ -483,19 +507,26 @@ export default function ExamEditor() {
     )
   } else if (status === 'pending') {
     acts = (
-      <button type="button" className="btn" onClick={onWithdraw} disabled={!!busyAction}>
-        Withdraw and edit
-      </button>
+      <>
+        {downloadBtn}
+        <button type="button" className="btn" onClick={onWithdraw} disabled={!!busyAction}>
+          Withdraw and edit
+        </button>
+      </>
     )
   } else if (status === 'approved') {
     acts = (
-      <button type="button" className="btn primary" onClick={onPublish} disabled={!!busyAction}>
-        Publish to students…
-      </button>
+      <>
+        {downloadBtn}
+        <button type="button" className="btn primary" onClick={onPublish} disabled={!!busyAction}>
+          Publish to students…
+        </button>
+      </>
     )
   } else if (status === 'published') {
     acts = (
       <>
+        {downloadBtn}
         <button type="button" className="btn" onClick={onClose} disabled={!!busyAction}>
           Close exam…
         </button>
@@ -506,10 +537,15 @@ export default function ExamEditor() {
     )
   } else if (status === 'closed') {
     acts = (
-      <Link className="btn primary" to={`/app/teacher/exams/${exam.id}/results`}>
-        View results
-      </Link>
+      <>
+        {downloadBtn}
+        <Link className="btn primary" to={`/app/teacher/exams/${exam.id}/results`}>
+          View results
+        </Link>
+      </>
     )
+  } else {
+    acts = downloadBtn
   }
 
   const crumb = (
@@ -541,6 +577,18 @@ export default function ExamEditor() {
       />
 
       {editable ? <Stepper step={2} /> : null}
+
+      <ExamWindowCard
+        exam={exam}
+        canEdit={editable || status === 'approved'}
+        busy={!!busyAction}
+        onSave={(body) =>
+          withExamUpdate(() => api.patchExam(id, body), {
+            toastMsg: 'Exam window saved',
+            clearEdit: false,
+          })
+        }
+      />
 
       {status === 'returned' ? (
         <div className="callout red">

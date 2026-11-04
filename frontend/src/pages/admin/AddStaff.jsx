@@ -11,7 +11,7 @@ import { useModal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 
 /**
- * Admin add staff form (v7 `P['a-add']`).
+ * Admin add-user form (v7 `P['a-add']`) — student, teacher, admin (+ make-head → HOD).
  */
 export default function AddStaff() {
   const navigate = useNavigate()
@@ -53,7 +53,7 @@ export default function AddStaff() {
     const em = email.trim().toLowerCase()
     if (!n) next.name = 'Enter a full name'
     if (!/.+@.+\..+/.test(em)) next.email = 'Enter an email like name@school.edu'
-    if (role === 'teacher' && !deptId) next.dept = 'Choose a department'
+    if (role !== 'admin' && !deptId) next.dept = 'Choose a department'
     setErrors(next)
     if (Object.keys(next).length) return
 
@@ -97,6 +97,10 @@ export default function AddStaff() {
     )
   }
 
+  const needsDept = role === 'teacher' || role === 'student'
+  const roleLabel =
+    role === 'admin' ? 'admin' : role === 'student' ? 'student' : makeHod ? 'head' : 'teacher'
+
   return (
     <>
       <PageTop
@@ -133,6 +137,23 @@ export default function AddStaff() {
 
         <fieldset className="apf">
           <legend className="lbl">Role</legend>
+          <label className={`apopt${role === 'student' ? ' on' : ''}`}>
+            <input
+              type="radio"
+              name="af-role"
+              value="student"
+              checked={role === 'student'}
+              onChange={() => {
+                setRole('student')
+                setMakeHod(false)
+              }}
+              disabled={busy}
+            />
+            <span>
+              <b>Student</b>
+              <small>Takes exams and views feedback for enrolled classes.</small>
+            </span>
+          </label>
           <label className={`apopt${role === 'teacher' ? ' on' : ''}`}>
             <input
               type="radio"
@@ -155,7 +176,10 @@ export default function AddStaff() {
               name="af-role"
               value="admin"
               checked={role === 'admin'}
-              onChange={() => setRole('admin')}
+              onChange={() => {
+                setRole('admin')
+                setMakeHod(false)
+              }}
               disabled={busy}
             />
             <span>
@@ -165,43 +189,43 @@ export default function AddStaff() {
           </label>
         </fieldset>
 
+        {needsDept ? (
+          <Field id="af-dept" label="Department" error={errors.dept}>
+            <select
+              id="af-dept"
+              value={deptId}
+              onChange={(e) => setDeptId(e.target.value)}
+              disabled={busy}
+            >
+              {depts.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : null}
+
         {role === 'teacher' ? (
-          <>
-            <Field id="af-dept" label="Department" error={errors.dept}>
-              <select
-                id="af-dept"
-                value={deptId}
-                onChange={(e) => setDeptId(e.target.value)}
-                disabled={busy}
-              >
-                {depts.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <label className="apopt" style={{ marginBottom: 20 }}>
-              <input
-                type="checkbox"
-                id="af-hod"
-                checked={makeHod}
-                onChange={(e) => setMakeHod(e.target.checked)}
-                disabled={busy}
-              />
-              <span>
-                <b>Make them head of this department</b>
-                <small>
-                  Replaces the current head, who goes back to being a teacher.
-                </small>
-              </span>
-            </label>
-          </>
+          <label className="apopt" style={{ marginBottom: 20 }}>
+            <input
+              type="checkbox"
+              id="af-hod"
+              checked={makeHod}
+              onChange={(e) => setMakeHod(e.target.checked)}
+              disabled={busy}
+            />
+            <span>
+              <b>Make them head of this department</b>
+              <small>
+                Replaces the current head, who goes back to being a teacher.
+              </small>
+            </span>
+          </label>
         ) : null}
 
         <p className="small">
-          A temporary password is shown once after you add them. Students aren&apos;t added here
-          when self-signup is enabled.
+          A temporary password is shown once after you add them.
         </p>
         <div className="row">
           <button
@@ -211,7 +235,7 @@ export default function AddStaff() {
             disabled={busy}
             aria-busy={busy}
           >
-            Add {role === 'admin' ? 'admin' : 'teacher'}
+            Add {roleLabel}
           </button>
           <button
             type="button"

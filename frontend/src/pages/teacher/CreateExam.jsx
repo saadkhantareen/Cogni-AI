@@ -10,6 +10,7 @@ import PageTop from '../../components/PageTop'
 import Panel from '../../components/Panel'
 import PipelineSteps from '../../components/PipelineSteps'
 import { useToast } from '../../components/Toast'
+import { defaultPktWindow, formatPktRange, pktToIso } from '../../utils/pkTime'
 import {
   defaultDuration,
   defaultExamTitle,
@@ -215,6 +216,9 @@ export default function CreateExam() {
   const [title, setTitle] = useState('')
   const [kind, setKind] = useState('Quiz')
   const [duration, setDuration] = useState(20)
+  const [windowDate, setWindowDate] = useState(() => defaultPktWindow().date)
+  const [windowStart, setWindowStart] = useState(() => defaultPktWindow().start)
+  const [windowEnd, setWindowEnd] = useState(() => defaultPktWindow().end)
   const [qTypes, setQTypes] = useState(() => defaultQuestionTypes('Quiz'))
   const [marksMode, setMarksMode] = useState('suggested')
   const [totalMarks, setTotalMarks] = useState(50)
@@ -421,6 +425,16 @@ export default function CreateExam() {
     if (!classId) errs.class = 'Choose a class'
     if (!materialIds.length) errs.materials = 'Select at least one material'
     if (!(Number(duration) >= 5)) errs.duration = 'Set a time limit of at least 5 minutes'
+    if (!windowDate || !windowStart || !windowEnd) {
+      errs.window = 'Set the date, start time and end time students can sit this paper'
+    } else {
+      const opens = new Date(pktToIso(windowDate, windowStart)).getTime()
+      const closes = new Date(pktToIso(windowDate, windowEnd)).getTime()
+      if (!(closes > opens)) errs.window = 'End time must be after the start time'
+      else if ((closes - opens) / 60000 < Number(duration)) {
+        errs.window = `The window must be at least ${Number(duration)} minutes, the length of the paper`
+      } else if (closes <= Date.now()) errs.window = 'This window has already ended. Pick a later time'
+    }
     if (totalQ < 1) errs.types = 'Choose at least one question of any type'
     if (totalQ > QUESTION_CAP) errs.types = `Total questions cannot exceed ${QUESTION_CAP}`
     const labels = qTypes.map((t) => String(t.label || '').trim().toLowerCase()).filter(Boolean)
@@ -483,6 +497,8 @@ export default function CreateExam() {
       title: title.trim(),
       kind,
       duration_min: Number(duration),
+      opens_at: pktToIso(windowDate, windowStart),
+      closes_at: pktToIso(windowDate, windowEnd),
       material_ids: materialIds,
       types: qTypes.map((t) => ({
         label: String(t.label || '').trim().slice(0, 40),
@@ -756,6 +772,47 @@ export default function CreateExam() {
                 </Field>
               </div>
             </div>
+
+            <h3 style={{ fontSize: 15.5, margin: '4px 0' }}>When students can sit it</h3>
+            <p className="small" style={{ margin: '0 0 10px' }}>
+              Pakistan time (PKT). Students can only start inside this window, and every attempt ends
+              when it closes.
+            </p>
+            <div className="grid g3">
+              <Field id="cf-date" label="Date" error={fieldErrors.window}>
+                <input
+                  id="cf-date"
+                  type="date"
+                  value={windowDate}
+                  disabled={busy}
+                  onChange={(e) => setWindowDate(e.target.value)}
+                />
+              </Field>
+              <Field id="cf-start" label="Start time (PKT)">
+                <input
+                  id="cf-start"
+                  type="time"
+                  value={windowStart}
+                  disabled={busy}
+                  onChange={(e) => setWindowStart(e.target.value)}
+                />
+              </Field>
+              <Field id="cf-end" label="End time (PKT)">
+                <input
+                  id="cf-end"
+                  type="time"
+                  value={windowEnd}
+                  disabled={busy}
+                  onChange={(e) => setWindowEnd(e.target.value)}
+                />
+              </Field>
+            </div>
+            {windowDate && windowStart && windowEnd && !fieldErrors.window ? (
+              <p className="small" style={{ margin: '-6px 0 14px' }}>
+                <Icon name="clock" className="sm" />{' '}
+                {formatPktRange(pktToIso(windowDate, windowStart), pktToIso(windowDate, windowEnd))}
+              </p>
+            ) : null}
 
             <h3 style={{ fontSize: 15.5, margin: '4px 0' }}>Question mix</h3>
             <p className="small" style={{ margin: '0 0 10px' }}>

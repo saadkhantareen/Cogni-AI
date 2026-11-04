@@ -9,10 +9,15 @@ import { useModal } from '../../components/Modal'
 import PageTop from '../../components/PageTop'
 import Pill from '../../components/Pill'
 import { useToast } from '../../components/Toast'
+import { formatPkt, formatPktRange, windowState } from '../../utils/pkTime'
 import useExamLock, {
   exitExamFullscreen,
   requestExamFullscreen,
 } from '../../hooks/useExamLock'
+import {
+  createExamTimerWorker,
+  terminateExamTimerWorker,
+} from '../../utils/examTimerWorker'
 import {
   answeredCount,
   formatMmSs,
@@ -24,6 +29,110 @@ import {
 
 const SAVE_DEBOUNCE_MS = 800
 const LETTERS = 'ABCD'
+
+/** Self-ticking exit confirm — timer never pauses while this is open. */
+function ExitExamModal({
+  deadline,
+  serverNow,
+  receivedAt,
+  submitting,
+  onKeepWorking,
+  onForfeit,
+}) {
+  const [modalLeft, setModalLeft] = useState(() =>
+    secondsLeft(deadline, serverNow, receivedAt),
+  )
+
+  useEffect(() => {
+    const tick = () => setModalLeft(secondsLeft(deadline, serverNow, receivedAt))
+    tick()
+    const id = setInterval(tick, 250)
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [deadline, serverNow, receivedAt])
+
+  return (
+    <>
+      <h3>Exit exam?</h3>
+      <p className="small">
+        <b>The timer keeps running</b>
+        {deadline ? (
+          <>
+            {' '}
+            — time left: <b className="num">{formatMmSs(modalLeft)}</b>.
+          </>
+        ) : (
+          '.'
+        )}{' '}
+        Leaving now will <b>submit your answers and use up your only attempt</b>. You will not be
+        able to retake this exam.
+      </p>
+      <div className="acts">
+        <button type="button" className="btn" onClick={onKeepWorking}>
+          Keep working
+        </button>
+        <button
+          type="button"
+          className="btn danger"
+          disabled={submitting}
+          onClick={onForfeit}
+        >
+          Exit and forfeit attempt
+        </button>
+      </div>
+    </>
+  )
+}
+
+/** Phones like the iPhone can't lock a page into fullscreen, so the exam can't run there. */
+function fullscreenSupported() {
+  if (typeof document === 'undefined') return false
+  return Boolean(document.fullscreenEnabled || document.webkitFullscreenEnabled)
+}
+
+/** Shown instead of the paper whenever the student is outside the fullscreen lock. */
+function ExamLockScreen({ reopened, violations, timerText, busy, onReturn, error }) {
+  const warned = violations >= 1
+  return (
+    <div className="exam-lockscreen" role="alertdialog" aria-labelledby="lock-h" aria-describedby="lock-d">
+      <div className="exam-lockscreen-box">
+        <Icon name="warn" />
+        <h1 id="lock-h">{reopened ? 'Your exam was reopened' : 'You left the exam'}</h1>
+        <p id="lock-d">
+          {reopened
+            ? 'Reloading or closing the exam page counts as leaving it. '
+            : 'Leaving fullscreen or switching to another tab or window is not allowed. '}
+          {warned ? (
+            <b>
+              This is your only warning. If you leave again, your answers are submitted automatically
+              and you cannot continue.
+            </b>
+          ) : (
+            <b>Return to fullscreen to continue.</b>
+          )}
+        </p>
+        <p className="small">
+          The timer keeps running: <b className="num">{timerText}</b> left.
+        </p>
+        {error ? (
+          <div className="callout red" role="alert">
+            <Icon name="alert" />
+            <div>{error}</div>
+          </div>
+        ) : null}
+        <button type="button" className="btn primary" disabled={busy} onClick={onReturn}>
+          Return to fullscreen and continue
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function SaveStatus({ status }) {
   if (status === 'saving') {
@@ -74,6 +183,12 @@ export default function TakeExam() {
   const [submitting, setSubmitting] = useState(false)
   const [starting, setStarting] = useState(false)
   const [fsError, setFsError] = useState('')
+  const [agreed, setAgreed] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
+  // Questions are hidden while the student is outside the lock or must re-enter fullscreen.
+  const [leaveWarning, setLeaveWarning] = useState(false)
+  const [needsFullscreen, setNeedsFullscreen] = useState(false)
+  const [violations, setViolations] = useState(0)
 
   const answersRef = useRef({})
   const attemptRef = useRef(null)
@@ -88,6 +203,20 @@ export default function TakeExam() {
   const exitModalOpenRef = useRef(false)
   const skipReenterOnCloseRef = useRef(false)
   const askExitRef = useRef(() => {})
+  const violationsRef = useRef(0)
+  const handleLeaveRef = useRef(() => {})
+  const timerWorkerRef = useRef(null)
+  const doSubmitRef = useRef(() => {})
+  const endExamRef = useRef(() => {})
+  const toastRef = useRef(toast)
+  const closeModalRef = useRef(closeModal)
+
+  useEffect(() => {
+    toastRef.current = toast
+  }, [toast])
+  useEffect(() => {
+    closeModalRef.current = closeModal
+  }, [closeModal])
 
   useEffect(() => {
     answersRef.current = answers
@@ -172,77 +301,132 @@ export default function TakeExam() {
     [endExam],
   )
 
-  const askExit = useCallback(() => {
-    if (!exam || !attemptRef.current || submittingRef.current) return
-    if (exitModalOpenRef.current) return
-    exitModalOpenRef.current = true
-    openModal(
-      <>
-        <h3>Exit exam?</h3>
-        <p className="small">
-          To leave the locked exam you must exit fullscreen. Leaving now will{' '}
-          <b>submit your answers and use up your only attempt</b>. You will not be able to retake
-          this exam.
-        </p>
-        <div className="acts">
-          <button
-            type="button"
-            className="btn"
-            onClick={async () => {
-              skipReenterOnCloseRef.current = true
-              closeModal()
-              exitModalOpenRef.current = false
-              const ok = await reenterFsRef.current()
-              if (!ok) {
-                toast('Could not return to fullscreen. Allow it and try again.', { type: 'error' })
-                askExitRef.current()
-              }
-            }}
-          >
-            Keep working
-          </button>
-          <button
-            type="button"
-            className="btn danger"
-            disabled={submitting}
-            onClick={() => {
-              skipReenterOnCloseRef.current = true
-              closeModal()
-              exitModalOpenRef.current = false
-              endExam({
-                endReason: 'exit',
-                toastMsg: 'You exited the exam. Your attempt has been submitted.',
-                forfeit: true,
-              })
-            }}
-          >
-            Exit and forfeit attempt
-          </button>
-        </div>
-      </>,
-      {
-        onClose: () => {
-          exitModalOpenRef.current = false
-          if (skipReenterOnCloseRef.current) {
-            skipReenterOnCloseRef.current = false
-            return
-          }
-          void reenterFsRef.current()
+  useEffect(() => {
+    doSubmitRef.current = doSubmit
+  }, [doSubmit])
+  useEffect(() => {
+    endExamRef.current = endExam
+  }, [endExam])
+
+  const askExit = useCallback(
+    (leaveEvt) => {
+      if (!exam || !attemptRef.current || submittingRef.current) return
+      if (exitModalOpenRef.current) return
+      exitModalOpenRef.current = true
+
+      const keepWorking = async () => {
+        skipReenterOnCloseRef.current = true
+        closeModal()
+        exitModalOpenRef.current = false
+        const ok = await reenterFsRef.current()
+        if (!ok) {
+          toast('Could not return to fullscreen. Allow it and try again.', { type: 'error' })
+          askExitRef.current(leaveEvt || { type: 'manual_retry' })
+        }
+      }
+
+      const forfeit = () => {
+        skipReenterOnCloseRef.current = true
+        closeModal()
+        exitModalOpenRef.current = false
+        endExam({
+          endReason: 'exit',
+          toastMsg: 'You exited the exam. Your attempt has been submitted.',
+          forfeit: true,
+        })
+      }
+
+      openModal(
+        <ExitExamModal
+          deadline={deadline}
+          serverNow={serverNow}
+          receivedAt={receivedAt}
+          submitting={submitting}
+          onKeepWorking={keepWorking}
+          onForfeit={forfeit}
+        />,
+        {
+          dismissOnBackdrop: false,
+          onClose: () => {
+            exitModalOpenRef.current = false
+            if (skipReenterOnCloseRef.current) {
+              skipReenterOnCloseRef.current = false
+              return
+            }
+            void reenterFsRef.current()
+          },
         },
-      },
-    )
-  }, [exam, openModal, closeModal, endExam, submitting, toast])
+      )
+    },
+    [
+      exam,
+      openModal,
+      closeModal,
+      endExam,
+      submitting,
+      toast,
+      deadline,
+      serverNow,
+      receivedAt,
+    ],
+  )
 
   useEffect(() => {
     askExitRef.current = askExit
   }, [askExit])
 
-  const onLeaveLock = useCallback(() => {
-    askExitRef.current()
+  /* Leaving fullscreen / the tab / the window: hide the paper and let the server count it.
+     The first leave is a warning; the server submits the attempt on the second. */
+  const handleLeave = useCallback(
+    async (evt) => {
+      const at = attemptRef.current
+      if (!at || submittingRef.current) return
+      setLeaveWarning(true)
+      if (violationsRef.current >= 1) {
+        // This leave ends the exam: save the latest answers before the server grades them.
+        Object.values(saveTimers.current).forEach((t) => clearTimeout(t))
+        saveTimers.current = {}
+        await Promise.all(
+          Object.entries(answersRef.current).map(([qid, value]) =>
+            api.putAttemptAnswer(at.id, qid, value).catch(() => {}),
+          ),
+        )
+      }
+      let res
+      try {
+        res = await api.reportExamLeave(at.id, evt?.type || 'tab_hide')
+      } catch {
+        return // offline: stay locked; reopening the exam is counted by the server anyway
+      }
+      violationsRef.current = res.violation_count
+      setViolations(res.violation_count)
+      if (res.status === 'submitted') {
+        submittingRef.current = true
+        setSubmitting(true)
+        disarmRef.current()
+        try {
+          await exitExamFullscreen()
+        } catch {
+          /* ignore */
+        }
+        setPhase('submitted')
+        toast('You left the exam a second time, so your answers were submitted.', { type: 'error' })
+        navigate(`/app/student/attempts/${at.id}/done`, { replace: true })
+      }
+    },
+    [navigate, toast],
+  )
+
+  useEffect(() => {
+    handleLeaveRef.current = handleLeave
+  }, [handleLeave])
+
+  const onLeaveLock = useCallback((evt) => {
+    handleLeaveRef.current(evt)
   }, [])
 
   const lock = useExamLock({
-    active: phase === 'taking' && !submitting,
+    active: phase === 'taking' && !submitting && !needsFullscreen,
     onLeave: onLeaveLock,
   })
 
@@ -282,6 +466,9 @@ export default function TakeExam() {
       if (existing?.status === 'in_progress') {
         const started = await api.startAttempt(examId)
         const now = Date.now()
+        violationsRef.current = started.violation_count || 0
+        setViolations(started.violation_count || 0)
+        setNeedsFullscreen(true) // a reloaded page is never in fullscreen
         setAttempt(started)
         setAnswers({ ...(started.answers || {}) })
         setDeadline(started.deadline)
@@ -351,11 +538,11 @@ export default function TakeExam() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, examId])
 
-  /* countdown timer */
+  /* countdown timer — Worker + visibility sync; never gated on modal/hidden */
   useEffect(() => {
     if (phase !== 'taking' || !deadline || !serverNow || !receivedAt) return undefined
-    const tick = () => {
-      const s = secondsLeft(deadline, serverNow, receivedAt)
+
+    const applyLeft = (s) => {
       setLeft(s)
       const at = attemptRef.current
       if (!at) return
@@ -367,17 +554,50 @@ export default function TakeExam() {
         const k = `${at.id}-${thresh}`
         if (s <= thresh && s > 0 && !w[k]) {
           w[k] = 1
-          toast(`${msg}. Your answers are saved.`)
+          toastRef.current(`${msg}. Your answers are saved.`)
         }
       })
       if (s <= 0) {
-        doSubmit(true)
+        doSubmitRef.current(true)
       }
     }
+
+    const tick = () => applyLeft(secondsLeft(deadline, serverNow, receivedAt))
+
+    const endMs = new Date(deadline).getTime()
+    const server = new Date(serverNow).getTime()
+    const drift = receivedAt - server
+
+    terminateExamTimerWorker(timerWorkerRef.current)
+    timerWorkerRef.current = null
+    let fallbackId = null
+
+    const worker = createExamTimerWorker()
+    if (worker) {
+      timerWorkerRef.current = worker
+      worker.onmessage = (e) => {
+        const s = e?.data?.left
+        if (typeof s === 'number') applyLeft(s)
+      }
+      worker.postMessage({ type: 'start', endMs, drift })
+    } else {
+      tick()
+      fallbackId = setInterval(tick, 1000)
+    }
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVis)
     tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
-  }, [phase, deadline, serverNow, receivedAt, doSubmit, toast])
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      if (fallbackId) clearInterval(fallbackId)
+      terminateExamTimerWorker(timerWorkerRef.current)
+      timerWorkerRef.current = null
+    }
+  }, [phase, deadline, serverNow, receivedAt])
 
   const persistAnswer = useCallback(
     async (qid, value) => {
@@ -447,6 +667,10 @@ export default function TakeExam() {
       }
       const started = await api.startAttempt(examId)
       const now = Date.now()
+      violationsRef.current = started.violation_count || 0
+      setViolations(started.violation_count || 0)
+      setLeaveWarning(false)
+      setNeedsFullscreen(false)
       setAttempt(started)
       setAnswers({ ...(started.answers || {}) })
       setDeadline(started.deadline)
@@ -466,6 +690,31 @@ export default function TakeExam() {
       setStarting(false)
     }
   }
+
+  async function returnToExam() {
+    setFsError('')
+    if (needsFullscreen) {
+      try {
+        await requestExamFullscreen()
+      } catch {
+        setFsError('Allow fullscreen to continue the exam.')
+        return
+      }
+      setNeedsFullscreen(false)
+      setLeaveWarning(false)
+      return
+    }
+    const ok = await lock.reenterFullscreen()
+    if (ok) setLeaveWarning(false)
+    else setFsError('Allow fullscreen to continue the exam.')
+  }
+
+  /* re-check the exam window while the student waits on the start screen */
+  useEffect(() => {
+    if (phase !== 'before') return undefined
+    const id = setInterval(() => setNow(Date.now()), 15_000)
+    return () => clearInterval(id)
+  }, [phase])
 
   function askSubmit() {
     if (!exam || !attempt || submittingRef.current) return
@@ -572,6 +821,9 @@ export default function TakeExam() {
       .map(([label, n]) => `${n} ${label}`)
       .join(', ')
     const maxMarks = questions.reduce((s, qq) => s + (Number(qq.marks) || 0), 0)
+    const win = windowState(exam.opens_at, exam.closes_at, now)
+    const canFullscreen = fullscreenSupported()
+    const canStart = agreed && canFullscreen && (win === 'open' || win === 'none')
 
     return (
       <>
@@ -596,31 +848,70 @@ export default function TakeExam() {
                 <b>{maxMarks}</b>
               </div>
             </div>
-            <ul
-              style={{
-                margin: '0 0 18px',
-                paddingLeft: 20,
-                color: 'var(--color-muted-foreground)',
-              }}
-            >
-              <li>{mix}.</li>
-              <li>
-                Time limit is set by your teacher: <b>{exam.duration_min} minutes</b>.
-              </li>
-              <li>
-                The exam runs in a <b>hard fullscreen lock</b>. You cannot switch tabs or windows
-                while locked.
-              </li>
-              <li>
-                To leave, exit fullscreen (or use <b>Exit exam</b>). That uses up your only attempt —
-                you cannot retake.
-              </li>
-              <li>Answers save automatically. The exam submits itself when time runs out.</li>
-              <li>
-                Written answers must be your own; they are checked for AI-generated text and reviewed
-                by your teacher.
-              </li>
-            </ul>
+            {win !== 'none' ? (
+              <div className={`callout ${win === 'open' ? 'green' : win === 'closed' ? 'red' : 'blue'}`}>
+                <Icon name="clock" />
+                <div>
+                  <b>Exam window:</b> {formatPktRange(exam.opens_at, exam.closes_at)}.{' '}
+                  {win === 'upcoming' ? <>It opens at {formatPkt(exam.opens_at)}.</> : null}
+                  {win === 'open' ? (
+                    <>Everything is submitted when the window closes, even if your time limit isn&apos;t up.</>
+                  ) : null}
+                  {win === 'closed' ? <>This window has ended, so the exam can no longer be started.</> : null}
+                </div>
+              </div>
+            ) : null}
+            <p style={{ margin: '0 0 14px', color: 'var(--color-muted-foreground)' }}>{mix}.</p>
+
+            <section className="exam-rules" aria-labelledby="rules-h">
+              <h3 id="rules-h">
+                <Icon name="warn" /> Read before you start
+              </h3>
+              <ul>
+                <li>
+                  The exam runs in <b>fullscreen</b>. Do not leave it until you submit.
+                </li>
+                <li>
+                  <b>Leaving fullscreen, switching tabs or switching windows</b> hides the paper. The{' '}
+                  <b>first time is your only warning</b>.
+                </li>
+                <li>
+                  <b>The second time, your answers are submitted automatically</b> and you cannot
+                  continue or retake the exam.
+                </li>
+                <li>
+                  <b>Reloading or closing this page counts as leaving.</b>
+                </li>
+                <li>
+                  The timer never pauses. You have <b>{exam.duration_min} minutes</b>
+                  {win !== 'none' ? ', and everything ends when the exam window closes' : ''}.
+                </li>
+                <li>Answers save automatically and are submitted when time runs out.</li>
+                <li>
+                  Written answers must be your own. They are checked for AI-generated text and
+                  reviewed by your teacher.
+                </li>
+              </ul>
+              <label className="exam-agree" htmlFor="exam-agree">
+                <input
+                  id="exam-agree"
+                  type="checkbox"
+                  checked={agreed}
+                  onChange={(e) => setAgreed(e.target.checked)}
+                />
+                <span>I have read these rules and understand that leaving the exam twice submits it.</span>
+              </label>
+            </section>
+
+            {!canFullscreen ? (
+              <div className="callout red" role="alert" style={{ marginBottom: 14 }}>
+                <Icon name="alert" />
+                <div>
+                  <b>This device can&apos;t run the exam.</b> Use a laptop or desktop browser (Chrome or
+                  Edge) for this exam.
+                </div>
+              </div>
+            ) : null}
             {fsError ? (
               <div className="callout red" role="alert" style={{ marginBottom: 14 }}>
                 <Icon name="alert" />
@@ -632,7 +923,7 @@ export default function TakeExam() {
                 type="button"
                 className="btn good"
                 style={{ minHeight: 48, paddingInline: 22 }}
-                disabled={starting}
+                disabled={starting || !canStart}
                 onClick={onStart}
               >
                 <Icon name="clock" className="sm" />
@@ -649,6 +940,18 @@ export default function TakeExam() {
   }
 
   /* taking */
+  if (leaveWarning || needsFullscreen) {
+    return (
+      <ExamLockScreen
+        reopened={needsFullscreen}
+        violations={violations}
+        timerText={left == null ? '--:--' : formatMmSs(left)}
+        busy={submitting}
+        error={fsError}
+        onReturn={returnToExam}
+      />
+    )
+  }
   if (!q) {
     return <ShellError message="This exam has no questions." />
   }
