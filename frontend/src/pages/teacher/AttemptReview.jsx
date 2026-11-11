@@ -11,6 +11,7 @@ import PageTop from '../../components/PageTop'
 import Pill from '../../components/Pill'
 import { useToast } from '../../components/Toast'
 import { formatShortDate } from '../../utils/format'
+import { plainifyExamText } from '../../utils/examText'
 import { keyConceptFraction, mcqLetter, scoreColor } from '../../utils/results'
 
 function AiChip({ children = 'AI grading' }) {
@@ -216,7 +217,7 @@ export default function AttemptReview() {
                   ) : null}
                 </b>
               </div>
-              <div className="qtext">{q.text}</div>
+              <div className="qtext">{plainifyExamText(q.text)}</div>
 
               {isMcq ? (
                 <>
@@ -224,7 +225,7 @@ export default function AttemptReview() {
                     {a == null || a === '' ? (
                       <i>Not answered</i>
                     ) : (
-                      `${mcqLetter(Number(a))}. ${(q.options || [])[Number(a)] ?? a}`
+                      `${mcqLetter(Number(a))}. ${plainifyExamText((q.options || [])[Number(a)] ?? a)}`
                     )}
                   </div>
                   <div className="small">{r.reason || ''}</div>

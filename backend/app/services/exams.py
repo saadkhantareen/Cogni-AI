@@ -311,10 +311,16 @@ async def generate_exam(actor: CurrentUser, payload) -> tuple[dict, list[str]]:
             f"{fallback_used} instead. Your saved model was not changed."
         )
     if not questions:
-        raise HTTPException(
-            status_code=400,
-            detail="The AI could not generate any valid questions from this material.",
-        )
+        hint = ""
+        for warning in reversed(warnings):
+            text = str(warning or "").strip()
+            if text and not text.startswith("Quality filter"):
+                hint = text
+                break
+        detail = "The AI could not generate any valid questions from this material."
+        if hint:
+            detail = f"{detail} {hint}"
+        raise HTTPException(status_code=400, detail=detail[:500])
     try:
         plan_marks(
             questions,

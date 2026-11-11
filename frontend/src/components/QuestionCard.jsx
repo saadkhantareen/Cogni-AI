@@ -5,6 +5,7 @@ import Pill from './Pill'
 import Spinner from './Spinner'
 import { Icon } from './IconSprite'
 import { isMcqQuestion } from '../utils/teacher'
+import { plainifyExamText } from '../utils/examText'
 
 const BLOOM_LEVELS = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create']
 
@@ -62,10 +63,10 @@ export default function QuestionCard({
   const q = question || {}
   const type = q.type || 'MCQ'
   const marks = q.marks ?? 0
-  const text = q.text || ''
-  const opts = q.options || q.opts || []
+  const text = plainifyExamText(q.text || '')
+  const opts = (q.options || q.opts || []).map((o) => plainifyExamText(o))
   const ans = q.answer_index ?? q.ans
-  const model = q.model_answer ?? q.model ?? ''
+  const model = plainifyExamText(q.model_answer ?? q.model ?? '')
   const bloom = q.bloom
   const topic = q.topic || ''
   const clo = q.clo || ''

@@ -1,4 +1,5 @@
 import { isMcqQuestion } from '../../utils/teacher'
+import { plainifyExamText } from '../../utils/examText'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import * as api from '../../api'
@@ -74,7 +75,7 @@ function answerDisplay(q, value) {
     const opts = q.options || []
     const idx = Number(value)
     if (Number.isInteger(idx) && opts[idx] != null) {
-      return `${LETTERS[idx]}. ${opts[idx]}`
+      return `${LETTERS[idx]}. ${plainifyExamText(opts[idx])}`
     }
     return String(value)
   }

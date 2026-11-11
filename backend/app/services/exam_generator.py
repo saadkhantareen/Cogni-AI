@@ -12,6 +12,7 @@ from app.prompts.quality_filter import (
     QUALITY_FILTER_SYSTEM_PROMPT,
     build_quality_filter_user_prompt,
 )
+from app.services.exam_text import plainify_exam_text
 from app.services.llm import LLMClient, LLMError, call_json
 
 MARKS_BY_TYPE = {
@@ -220,7 +221,177 @@ def _bloom_mix_warning(questions: list[dict]) -> str | None:
 def _max_tokens_for_counts(counts: dict[str, int]) -> int:
     """Larger Midterm/Final batches need more completion budget or JSON truncates."""
     n = sum(max(0, int(v)) for v in counts.values())
-    return min(4500, max(1800, 700 + 400 * n))
+    # Stay at or under the 4096 completion cap common on free and proxy models.
+    return min(4096, max(2200, 800 + 500 * n))
+
+
+_BLOOM_ALIASES = {
+    "remember": "Remember",
+    "knowledge": "Remember",
+    "understand": "Understand",
+    "understanding": "Understand",
+    "comprehension": "Understand",
+    "apply": "Apply",
+    "application": "Apply",
+    "analyze": "Analyze",
+    "analyse": "Analyze",
+    "analysis": "Analyze",
+    "evaluate": "Evaluate",
+    "evaluation": "Evaluate",
+    "create": "Create",
+    "creating": "Create",
+    "synthesis": "Create",
+}
+
+
+def _coerce_question_list(data) -> list:
+    """Accept the prompt shape plus the wrappers models actually return."""
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if not isinstance(data, dict):
+        return []
+    for key in ("questions", "items", "exam_questions"):
+        val = data.get(key)
+        if isinstance(val, list):
+            return [x for x in val if isinstance(x, dict)]
+    for key in ("exam", "paper", "result"):
+        inner = data.get(key)
+        if isinstance(inner, (dict, list)):
+            found = _coerce_question_list(inner)
+            if found:
+                return found
+    if data.get("text") or data.get("stem") or data.get("question") or data.get("question_text"):
+        return [data]
+    return []
+
+
+def _as_int(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value == int(value):
+        return int(value)
+    if isinstance(value, str):
+        s = value.strip()
+        if len(s) == 1 and s.upper() in "ABCD":
+            return "ABCD".index(s.upper())
+        if s.lstrip("-").isdigit():
+            return int(s)
+    return None
+
+
+def _keywords_from_answer(text: str) -> list[dict]:
+    words = re.findall(r"[A-Za-z][A-Za-z\-]{4,}", text or "")
+    picked: list[str] = []
+    for w in words:
+        lw = w.lower()
+        if lw not in picked:
+            picked.append(lw)
+        if len(picked) >= 4:
+            break
+    while len(picked) < 2:
+        picked.append(f"concept{len(picked)}")
+    return [{"label": w.capitalize(), "variants": [w]} for w in picked]
+
+
+def normalize_raw_question(raw: dict, formats: dict[str, str] | None = None) -> dict:
+    """Coerce the loose shapes models return into the schema we validate."""
+    if not isinstance(raw, dict):
+        return raw
+    q = dict(raw)
+    if not str(q.get("text") or "").strip():
+        for key in ("stem", "question", "prompt", "question_text"):
+            if isinstance(q.get(key), str) and q[key].strip():
+                q["text"] = q[key].strip()
+                break
+    if isinstance(q.get("text"), str):
+        q["text"] = plainify_exam_text(q["text"])
+    bloom = str(q.get("bloom") or "").strip()
+    q["bloom"] = _BLOOM_ALIASES.get(bloom.lower(), bloom if bloom in BLOOM_LEVELS else "Understand")
+    label = str(q.get("type") or q.get("question_type") or "").strip()
+    if formats and label not in formats:
+        low = label.lower()
+        match = next((k for k in formats if k.lower() == low), None)
+        if match is None and (low in ("mcq", "multiple choice", "multiple-choice") or q.get("options")):
+            match = next((k for k, fmt in formats.items() if fmt == "mcq"), None)
+        if match is None and ("long" in low or "essay" in low):
+            match = next(
+                (
+                    k
+                    for k, fmt in formats.items()
+                    if fmt == "written" and ("long" in k.lower() or "essay" in k.lower())
+                ),
+                None,
+            )
+        if match is None and "short" in low:
+            match = next(
+                (k for k, fmt in formats.items() if fmt == "written" and "short" in k.lower()),
+                None,
+            )
+        if match is None and len(formats) == 1:
+            match = next(iter(formats))
+        if match:
+            label = match
+    if label:
+        q["type"] = label[:40]
+    if not str(q.get("clo") or "").strip():
+        q["clo"] = "CLO-1"
+    if not str(q.get("topic") or "").strip():
+        q["topic"] = "General"
+    options = q.get("options")
+    if isinstance(options, dict):
+        options = [options[k] for k in ("A", "B", "C", "D") if k in options] or list(options.values())
+    if isinstance(options, str):
+        options = [line.strip() for line in re.split(r"[\n|]", options) if line.strip()]
+    if isinstance(options, list):
+        options = [plainify_exam_text(str(o).strip()) for o in options if str(o).strip()]
+        if len(options) > 4:
+            options = options[:4]
+        q["options"] = options
+    idx = _as_int(q.get("answer_index", q.get("correct_index", q.get("correct"))))
+    if isinstance(options, list) and isinstance(idx, int) and idx == len(options) and len(options) == 4:
+        idx = 3
+    if isinstance(idx, int):
+        q["answer_index"] = idx
+    keywords = q.get("keywords")
+    if isinstance(keywords, list):
+        norm = []
+        for item in keywords:
+            if isinstance(item, str) and item.strip():
+                norm.append({"label": item.strip()[:80], "variants": [item.strip().lower()]})
+            elif isinstance(item, dict):
+                lab = str(item.get("label") or item.get("keyword") or "").strip()
+                variants = item.get("variants") or item.get("synonyms") or []
+                if isinstance(variants, str):
+                    variants = [variants]
+                variants = [str(v).strip().lower() for v in variants if str(v).strip()]
+                if lab and not variants:
+                    variants = [lab.lower()]
+                if lab:
+                    norm.append({"label": lab[:80], "variants": variants})
+        q["keywords"] = norm
+    if formats and q.get("type") in formats:
+        written = formats[q["type"]] != "mcq"
+    else:
+        written = not (isinstance(q.get("options"), list) and q.get("options"))
+    if written and not str(q.get("model_answer") or "").strip():
+        for key in ("modelAnswer", "model_answer", "expected_answer", "sample_answer", "answer"):
+            value = q.get(key)
+            if isinstance(value, str) and value.strip() and value.strip().upper() not in "ABCD":
+                q["model_answer"] = plainify_exam_text(value.strip())
+                break
+    elif written and isinstance(q.get("model_answer"), str):
+        q["model_answer"] = plainify_exam_text(q["model_answer"])
+    if written and len(q.get("keywords") or []) < 2 and str(q.get("model_answer") or "").strip():
+        q["keywords"] = _keywords_from_answer(q["model_answer"])
+    sci = q.get("source_chunk_idx")
+    coerced = _as_int(sci)
+    if coerced is None or coerced < 0:
+        q["source_chunk_idx"] = None
+    else:
+        q["source_chunk_idx"] = coerced
+    return q
 
 
 async def _call_llm_for_questions(
@@ -250,16 +421,35 @@ async def _call_llm_for_questions(
         max_tokens=_max_tokens_for_counts(counts),
         temperature=0.4,
     )
-    raw_questions = data.get("questions", []) if isinstance(data, dict) else []
+    raw_questions = _coerce_question_list(data)
 
     questions, warnings = [], []
     for raw in raw_questions:
+        raw = normalize_raw_question(raw, formats)
         error = validate_question(raw, formats)
         if error:
             warnings.append(f"Dropped an invalid question: {error}.")
             continue
         questions.append(finalize_question(raw, formats))
     return questions, warnings
+
+
+def _provider_is_down(exc: BaseException) -> bool:
+    """True when another question batch will hit the same provider failure."""
+    raw = str(exc).lower()
+    return any(
+        token in raw
+        for token in (
+            "invalid request",
+            "unavailable",
+            "temporarily disabled",
+            "not configured",
+            "not included",
+            "api key",
+            "took too long",
+            "provider is unavailable",
+        )
+    )
 
 
 def _should_batch_by_type(counts: dict[str, int]) -> bool:
@@ -397,6 +587,8 @@ async def _fill_shortfall(
                 + "."
             )
         except LLMError as exc:
+            if _provider_is_down(exc):
+                raise
             warnings.append(f"Fill pass {pass_i + 1} failed: {exc}")
             break
 
@@ -439,9 +631,12 @@ async def generate_questions(
 
     # Batch by type for Midterm/Final-sized mixes — free models truncate big JSON.
     if _should_batch_by_type(counts):
+        last_exc: LLMError | None = None
+        attempted = 0
         for label, need in counts.items():
             if need <= 0:
                 continue
+            attempted += 1
             try:
                 batch, warns = await _call_llm_for_questions(
                     llm,
@@ -455,15 +650,21 @@ async def generate_questions(
                     if not _is_duplicate(q, questions):
                         questions.append(q)
             except LLMError as exc:
+                if _provider_is_down(exc):
+                    raise
+                last_exc = exc
                 warnings.append(
                     f"Could not generate {need} {label} question(s): {exc}. "
                     "Try again or use a different model in Settings."
                 )
-        if not questions:
-            # Re-raise a single failure if every type failed.
-            raise LLMError(
-                "This model could not generate the paper. Please retry with another model, or try again."
-            )
+        if not questions and last_exc is not None and attempted:
+            # Every batch failed in the provider. Surface that error (auth,
+            # timeout, busy) instead of a generic "try another model" line.
+            # A batch that returned only invalid questions falls through so
+            # the fill pass can still salvage the paper.
+            raised_all = all(w.startswith("Could not generate ") for w in warnings[-attempted:])
+            if raised_all:
+                raise last_exc
     else:
         questions, warnings = await _call_llm_for_questions(
             llm, source_chunks, counts, clos, formats=formats
@@ -573,6 +774,8 @@ async def generate_questions_with_blueprint(
                 llm, source, need, clos, formats=formats
             )
         except LLMError as exc:
+            if _provider_is_down(exc):
+                raise
             warnings.append(
                 f"Skipped {page_label} ({sum(need.values())} question(s)): {exc}"
             )

@@ -35,6 +35,11 @@ counts as "type".
 Assign each question a topic (2 to 4 words) and the best-matching clo from
 the "clos" list supplied in the user message.
 
+Write every text field (question stem, options, model_answer) in plain
+Unicode that a student can read as-is. Never use LaTeX, TeX, Markdown,
+math-mode delimiters, or backslash commands ($...$, $$...$$, \\text,
+\\mathrm, \\to, ^{}, _{}). Use ordinary characters: ²H, ⁴He, →, α, ≤, MeV.
+
 If "avoid_texts" is present, do not repeat any question with the same
 meaning as those. If "preferred_topic"/"preferred_clo" are present, prefer
 them when the material supports it.

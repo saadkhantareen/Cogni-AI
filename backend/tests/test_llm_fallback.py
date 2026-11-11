@@ -96,3 +96,55 @@ async def test_fallback_after_invalid_json(monkeypatch):
     assert calls[0] == "google/gemma-4-31b-it:free"
     assert "openrouter/free" in calls
     assert client.last_model_used == "openrouter/free"
+
+
+@pytest.mark.asyncio
+async def test_agnes_unavailable_tries_flash_fallback(monkeypatch):
+    """Agnes 3.0 Flash down → try 2.5 Flash on the same key."""
+    client = OpenAIClient(
+        api_key="test-key",
+        base_url="https://apihub.agnes-ai.com/v1",
+        model="agnes-3.0-flash",
+    )
+    assert client._fallback_models[0] == "agnes-2.5-flash"
+    calls = []
+
+    async def fake_chat(messages, *, max_tokens, temperature, json_object, model=None):
+        calls.append(model)
+        if model == "agnes-3.0-flash":
+            raise Exception(
+                "Error code: 503 - This model is currently unavailable. Please try again later."
+            )
+        return _Resp('{"questions": [{"text": "ok"}]}')
+
+    monkeypatch.setattr(client, "_chat", fake_chat)
+    result = await client.json_complete("sys", "user")
+    assert result["questions"][0]["text"] == "ok"
+    assert calls == ["agnes-3.0-flash", "agnes-2.5-flash"]
+    assert client.last_model_used == "agnes-2.5-flash"
+
+
+@pytest.mark.asyncio
+async def test_vyce_unavailable_tries_next_model(monkeypatch):
+    """GLM down → try Nemotron on the same Vyce key."""
+    client = OpenAIClient(
+        api_key="test-key",
+        base_url="https://vyceai.com/v1",
+        model="glm-5.3-flash",
+    )
+    assert client._fallback_models[0] == "nemotron-3.5-super-vl"
+    calls = []
+
+    async def fake_chat(messages, *, max_tokens, temperature, json_object, model=None):
+        calls.append(model)
+        if model == "glm-5.3-flash":
+            raise Exception(
+                "Error code: 503 - This model is currently unavailable. Please try again later."
+            )
+        return _Resp('{"questions": [{"text": "ok"}]}')
+
+    monkeypatch.setattr(client, "_chat", fake_chat)
+    result = await client.json_complete("sys", "user")
+    assert result["questions"][0]["text"] == "ok"
+    assert calls == ["glm-5.3-flash", "nemotron-3.5-super-vl"]
+    assert client.last_model_used == "nemotron-3.5-super-vl"

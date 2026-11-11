@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useBlocker, useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext'
 import * as api from '../../api'
 import { ApiError } from '../../api/client'
 import { ShellError, ShellLoading } from '../../components/AppShell'
@@ -9,6 +10,7 @@ import { Icon } from '../../components/IconSprite'
 import PageTop from '../../components/PageTop'
 import Panel from '../../components/Panel'
 import PipelineSteps from '../../components/PipelineSteps'
+import { useModal } from '../../components/Modal'
 import { useToast } from '../../components/Toast'
 import { defaultPktWindow, formatPktRange, pktToIso } from '../../utils/pkTime'
 import {
@@ -56,41 +58,76 @@ function parseChunkPageSpan(page) {
   return null
 }
 
+/** File name for picker tooltips — strip path, keep extension so PDF vs PPTX is clear. */
+function materialFileLabel(name) {
+  const raw = String(name || '').trim()
+  if (!raw) return 'Material'
+  const base = raw.split(/[/\\]/).pop() || raw
+  return base.length > 48 ? `${base.slice(0, 45)}…` : base
+}
+
+function clipText(text, max) {
+  const s = String(text || '').replace(/\s+/g, ' ').trim()
+  if (s.length <= max) return s
+  return `${s.slice(0, max - 1).trim()}…`
+}
+
+/**
+ * Deck titles like "BASICS OF" are stamped on every slide. Prefer the slide's
+ * own sentence so each row is distinguishable, and lead with the slide number.
+ */
+function topicText(heading, preview) {
+  const h = String(heading || '').replace(/\s+/g, ' ').trim()
+  let body = String(preview || '').replace(/\s+/g, ' ').trim()
+  if (h && body.toLowerCase().startsWith(h.toLowerCase())) {
+    body = body.slice(h.length).replace(/^[\s:–—\-./]+/, '').trim()
+  }
+  const headingWeak = !h || h.length < 18 || h.split(/\s+/).length <= 3
+  if (headingWeak && body.length >= 12) return clipText(body, 110)
+  if (h && body.length >= 12 && !h.toLowerCase().includes(body.slice(0, 16).toLowerCase())) {
+    return clipText(`${h} — ${body}`, 110)
+  }
+  return clipText(h || body, 110)
+}
+
 function slideLabel(heading, preview, pageNum, kindWord) {
-  const h = String(heading || '').trim()
-  if (h) return h.length > 72 ? `${h.slice(0, 70)}…` : h
-  const p = String(preview || '').replace(/\s+/g, ' ').trim()
-  if (p) return p.length > 72 ? `${p.slice(0, 70)}…` : p
-  return `${kindWord} ${pageNum}`
+  const topic = topicText(heading, preview)
+  const where = pageNum != null ? `${kindWord} ${pageNum}` : kindWord
+  return topic ? `${where} — ${topic}` : where
 }
 
 /** Named slide/page units for the blueprint picker. */
-function unitsFromChunks(chunks, kindWord = 'Slide') {
+function unitsFromChunks(chunks, kindWord = 'Slide', fileName = '') {
   const byPage = new Map()
   const orphans = []
   for (const c of chunks || []) {
     const idx = typeof c.idx === 'number' ? c.idx : null
     const span = parseChunkPageSpan(c.page)
     const heading = c.heading || ''
-    const preview = String(c.text || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+    const preview = String(c.text || '').replace(/\s+/g, ' ').trim().slice(0, 220)
     if (span) {
       const [lo, hi] = span
       for (let n = lo; n <= hi; n++) {
         const key = `p${n}`
+        const label = slideLabel(heading, preview, n, kindWord)
         if (!byPage.has(key)) {
           byPage.set(key, {
             key,
             page: n,
+            fileName: materialFileLabel(fileName),
             chunk_idxs: idx != null ? [idx] : [],
             heading,
-            label: slideLabel(heading, preview, n, kindWord),
+            preview,
+            label,
           })
         } else {
           const u = byPage.get(key)
           if (idx != null && !u.chunk_idxs.includes(idx)) u.chunk_idxs.push(idx)
-          if (heading && !u.heading) {
-            u.heading = heading
-            u.label = slideLabel(heading, preview, n, kindWord)
+          const currentTopic = String(u.label || '').split('—').slice(1).join('—').trim()
+          if (label.length > (u.label || '').length && currentTopic.length < 18) {
+            u.heading = heading || u.heading
+            u.preview = preview || u.preview
+            u.label = label
           }
         }
       }
@@ -98,15 +135,27 @@ function unitsFromChunks(chunks, kindWord = 'Slide') {
       orphans.push({
         key: `c${idx}`,
         page: null,
+        fileName: materialFileLabel(fileName),
         chunk_idxs: [idx],
         heading,
+        preview,
         label: slideLabel(heading, preview, idx + 1, 'Section'),
       })
     }
   }
   const pages = [...byPage.values()].sort((a, b) => a.page - b.page)
-  if (pages.length) return pages
-  return orphans
+  return disambiguateLabels(pages.length ? pages : orphans)
+}
+
+function disambiguateLabels(units) {
+  const counts = new Map()
+  for (const u of units) counts.set(u.label, (counts.get(u.label) || 0) + 1)
+  return units.map((u) => {
+    if ((counts.get(u.label) || 0) < 2) return u
+    const extra = clipText(u.preview, 80)
+    if (!extra || u.label.includes(extra.slice(0, 24))) return u
+    return { ...u, label: clipText(`${u.label} — ${extra}`, 160) }
+  })
 }
 
 function scopeFromUnits(materialId, unitKeys, outlines) {
@@ -142,7 +191,42 @@ function newCountRow(materialId, typeLabel = 'Long', count = 1, unitKeys = []) {
   }
 }
 
-function SlidePicker({ units, selectedKeys, disabled, onChange }) {
+function draftStorageKey(userId) {
+  return `cogni-exam-gen-draft:${userId || 'local'}`
+}
+
+function readExamDraft(userId) {
+  try {
+    const raw = localStorage.getItem(draftStorageKey(userId))
+    if (!raw) return null
+    const data = JSON.parse(raw)
+    if (!data || typeof data !== 'object' || !data.classId) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+function writeExamDraft(userId, data) {
+  localStorage.setItem(
+    draftStorageKey(userId),
+    JSON.stringify({ ...data, savedAt: new Date().toISOString() }),
+  )
+}
+
+function clearExamDraft(userId) {
+  localStorage.removeItem(draftStorageKey(userId))
+}
+
+function SlidePicker({ units, selectedKeys, disabled, onChange, showSelectAll = false }) {
+  const selectAllRef = useRef(null)
+  const allKeys = units.map((u) => u.key)
+  const selectedCount = allKeys.filter((k) => selectedKeys.includes(k)).length
+  const allOn = allKeys.length > 0 && selectedCount === allKeys.length
+  const someOn = selectedCount > 0 && !allOn
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = someOn
+  }, [someOn])
   if (!units.length) {
     return (
       <p className="small slide-picker-empty">
@@ -162,19 +246,38 @@ function SlidePicker({ units, selectedKeys, disabled, onChange }) {
               className="slide-chip"
               disabled={disabled}
               onClick={() => onChange(selectedKeys.filter((k) => k !== u.key))}
-              title="Remove"
+              title={u.fileName ? `${u.fileName}\n${u.label}` : u.label}
             >
-              <span className="slide-chip-lab">{u.label}</span>
+              <span className="slide-chip-lab" title={u.label}>
+                {u.label}
+              </span>
               <span aria-hidden="true">×</span>
             </button>
           ))}
         </div>
       ) : null}
+      {showSelectAll ? (
+        <label className={`slide-opt select-all${allOn ? ' on' : ''}`}>
+          <input
+            ref={selectAllRef}
+            type="checkbox"
+            checked={allOn}
+            disabled={disabled}
+            onChange={() => onChange(allOn ? [] : allKeys)}
+          />
+          <span className="slide-opt-lab">
+            Select all
+            <span className="slide-select-all-hint">
+              Use the whole slide as question material, instead of picking topics one by one.
+            </span>
+          </span>
+        </label>
+      ) : null}
       <div className="slide-picker-list" role="group" aria-label="Slides and pages">
         {units.map((u) => {
           const on = selectedKeys.includes(u.key)
           return (
-            <label key={u.key} className={`slide-opt${on ? ' on' : ''}`}>
+            <label key={u.key} className={`slide-opt${on ? ' on' : ''}`} title={u.label}>
               <input
                 type="checkbox"
                 checked={on}
@@ -186,10 +289,7 @@ function SlidePicker({ units, selectedKeys, disabled, onChange }) {
                   onChange(next)
                 }}
               />
-              <span className="slide-opt-lab">
-                {u.label}
-                {u.page != null ? <span className="slide-opt-pg">#{u.page}</span> : null}
-              </span>
+              <span className="slide-opt-lab">{u.label}</span>
             </label>
           )
         })}
@@ -204,6 +304,9 @@ export default function CreateExam() {
   const prefillClass = searchParams.get('cls') || searchParams.get('class') || ''
   const navigate = useNavigate()
   const toast = useToast()
+  const { openModal, closeModal } = useModal()
+  const { user } = useAuth()
+  const userId = user?.id || ''
 
   const [classes, setClasses] = useState([])
   const [materials, setMaterials] = useState([])
@@ -235,8 +338,13 @@ export default function CreateExam() {
   const [weightRows, setWeightRows] = useState([])
   const [pinRows, setPinRows] = useState([])
   const [outlineBusy, setOutlineBusy] = useState(false)
+  const [draftRestored, setDraftRestored] = useState(false)
+  const [baseline, setBaseline] = useState(null)
+  const allowLeaveRef = useRef(false)
+  const snapshotRef = useRef('')
 
   const load = useCallback(async () => {
+    setBaseline(null)
     setLoading(true)
     setError(null)
     try {
@@ -248,7 +356,7 @@ export default function CreateExam() {
       setClasses(cls)
       setRequests(reqs || [])
       if (llm?.using_platform) {
-        setLlmNote('Using the platform LLM (VyceAI Claude). You can add your own key in Settings.')
+        setLlmNote('Using the platform LLM (Agnes 3.0 Flash). You can add your own key in Settings.')
       } else if (llm?.provider) {
         setLlmNote(
           `Using your ${llm.provider} key${llm.model ? ` · ${llm.model}` : ''}. Change this in Settings.`,
@@ -256,6 +364,9 @@ export default function CreateExam() {
       } else {
         setLlmNote('')
       }
+
+      const saved = reqId ? null : readExamDraft(userId)
+      const savedOk = !!(saved && cls.some((c) => c.id === saved.classId))
 
       let initialClass = prefillClass
       let initialKind = 'Quiz'
@@ -269,28 +380,64 @@ export default function CreateExam() {
           initialReq = r.id
         }
       }
+      if (savedOk) {
+        initialClass = saved.classId
+        initialKind = saved.kind || initialKind
+        initialReq = saved.linkedReq || ''
+      }
       if (!initialClass && cls[0]) initialClass = cls[0].id
 
       setClassId(initialClass || '')
       setKind(initialKind)
-      setDuration(defaultDuration(initialKind))
-      setQTypes(defaultQuestionTypes(initialKind))
+      setDuration(
+        savedOk && saved.duration != null ? saved.duration : defaultDuration(initialKind),
+      )
+      setQTypes(
+        savedOk && Array.isArray(saved.qTypes) && saved.qTypes.length
+          ? saved.qTypes
+          : defaultQuestionTypes(initialKind),
+      )
       setLinkedReq(initialReq || '')
+      setDraftRestored(savedOk)
 
       if (initialClass) {
         const mats = await api.listMaterials(initialClass)
         setMaterials(mats)
-        setMaterialIds(mats.length ? [mats[0].id] : [])
         const c = cls.find((x) => x.id === initialClass)
-        const quizN = 1
-        setTitle(defaultExamTitle(initialKind, c?.name || 'Exam', quizN))
+        if (savedOk) {
+          const ids = (saved.materialIds || []).filter((id) => mats.some((m) => m.id === id))
+          setMaterialIds(ids.length ? ids : mats[0] ? [mats[0].id] : [])
+          setTitle(saved.title || defaultExamTitle(initialKind, c?.name || 'Exam', 1))
+          setTitleTouched(!!saved.titleTouched)
+          if (saved.windowDate) setWindowDate(saved.windowDate)
+          if (saved.windowStart) setWindowStart(saved.windowStart)
+          if (saved.windowEnd) setWindowEnd(saved.windowEnd)
+          if (saved.marksMode === 'total' || saved.marksMode === 'suggested') {
+            setMarksMode(saved.marksMode)
+          }
+          if (saved.totalMarks != null) setTotalMarks(saved.totalMarks)
+          setBlueprintOn(!!saved.blueprintOn)
+          setWeightRows(Array.isArray(saved.weightRows) ? saved.weightRows : [])
+          setPinRows(Array.isArray(saved.pinRows) ? saved.pinRows : [])
+        } else {
+          setMaterialIds(mats.length ? [mats[0].id] : [])
+          setTitle(defaultExamTitle(initialKind, c?.name || 'Exam', 1))
+          setTitleTouched(false)
+          setBlueprintOn(false)
+          setWeightRows([])
+          setPinRows([])
+          const window = defaultPktWindow()
+          setWindowDate(window.date)
+          setWindowStart(window.start)
+          setWindowEnd(window.end)
+        }
       }
     } catch (err) {
       setError(err)
     } finally {
       setLoading(false)
     }
-  }, [prefillClass, reqId])
+  }, [prefillClass, reqId, userId])
 
   useEffect(() => {
     load()
@@ -320,6 +467,175 @@ export default function CreateExam() {
     0,
   )
 
+  const formSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        classId,
+        materialIds,
+        title,
+        kind,
+        duration,
+        windowDate,
+        windowStart,
+        windowEnd,
+        qTypes,
+        marksMode,
+        totalMarks,
+        linkedReq,
+        titleTouched,
+        blueprintOn,
+        weightRows,
+        pinRows,
+      }),
+    [
+      classId,
+      materialIds,
+      title,
+      kind,
+      duration,
+      windowDate,
+      windowStart,
+      windowEnd,
+      qTypes,
+      marksMode,
+      totalMarks,
+      linkedReq,
+      titleTouched,
+      blueprintOn,
+      weightRows,
+      pinRows,
+    ],
+  )
+  snapshotRef.current = formSnapshot
+  const dirty = baseline != null && formSnapshot !== baseline
+
+  useEffect(() => {
+    if (loading) return undefined
+    setBaseline(snapshotRef.current)
+    return undefined
+  }, [loading])
+
+  useEffect(() => {
+    if (!dirty || allowLeaveRef.current) return undefined
+    try {
+      writeExamDraft(userId, JSON.parse(snapshotRef.current))
+    } catch {
+      /* ignore quota / private mode */
+    }
+    return undefined
+  }, [dirty, formSnapshot, userId])
+
+  useEffect(() => {
+    if (!dirty) return undefined
+    const onBeforeUnload = (e) => {
+      try {
+        writeExamDraft(userId, JSON.parse(snapshotRef.current))
+      } catch {
+        /* ignore */
+      }
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [dirty, userId])
+
+  const askLeave = useCallback(
+    () =>
+      new Promise((resolve) => {
+        let settled = false
+        const finish = (choice) => {
+          if (settled) return
+          settled = true
+          closeModal()
+          resolve(choice)
+        }
+        openModal(
+          <>
+            <h3>Leave exam generation?</h3>
+            <p className="small">
+              This setup has not been generated yet. Save it as a draft to finish later, save your
+              latest changes, or delete it.
+            </p>
+            <div className="acts">
+              <button type="button" className="btn" onClick={() => finish('stay')}>
+                Stay
+              </button>
+              <button type="button" className="btn bad" onClick={() => finish('delete')}>
+                Delete
+              </button>
+              <button type="button" className="btn" onClick={() => finish('changes')}>
+                Save changes
+              </button>
+              <button type="button" className="btn primary" onClick={() => finish('draft')}>
+                Save as draft
+              </button>
+            </div>
+          </>,
+          {
+            onClose: () => finish('stay'),
+          },
+        )
+      }),
+    [openModal, closeModal],
+  )
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      dirty &&
+      !allowLeaveRef.current &&
+      `${currentLocation.pathname}${currentLocation.search}` !==
+        `${nextLocation.pathname}${nextLocation.search}`,
+  )
+  const blockerRef = useRef(blocker)
+  blockerRef.current = blocker
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return undefined
+    let cancelled = false
+    askLeave().then((choice) => {
+      const current = blockerRef.current
+      if (cancelled || current.state !== 'blocked') return
+      if (choice === 'stay') {
+        current.reset()
+        return
+      }
+      if (choice === 'delete') clearExamDraft(userId)
+      else {
+        try {
+          writeExamDraft(userId, JSON.parse(snapshotRef.current))
+        } catch {
+          /* ignore */
+        }
+      }
+      allowLeaveRef.current = true
+      current.proceed()
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [blocker.state, askLeave, userId])
+
+  function saveDraftNow() {
+    try {
+      writeExamDraft(userId, JSON.parse(formSnapshot))
+      setBaseline(formSnapshot)
+      setDraftRestored(true)
+      toast('Draft saved on this device. It will be here when you come back.')
+    } catch {
+      toast('Could not save this draft in the browser.')
+    }
+  }
+
+  function discardSavedDraft() {
+    clearExamDraft(userId)
+    allowLeaveRef.current = true
+    setDraftRestored(false)
+    load().finally(() => {
+      allowLeaveRef.current = false
+    })
+  }
+
   useEffect(() => {
     let cancelled = false
     async function loadOutlines() {
@@ -333,9 +649,10 @@ export default function CreateExam() {
           materialIds.map(async (id) => {
             try {
               const detail = await api.getMaterial(id)
-              const name = String(detail.name || '').toLowerCase()
-              const kindWord = /\.(ppt|pptx)$/i.test(name) || /slide/i.test(name) ? 'Slide' : 'Page'
-              return [id, unitsFromChunks(detail.chunks || [], kindWord)]
+              const fileName = String(detail.name || 'Material')
+              const kindWord =
+                /\.(ppt|pptx)$/i.test(fileName) || /slide/i.test(fileName) ? 'Slide' : 'Page'
+              return [id, unitsFromChunks(detail.chunks || [], kindWord, fileName)]
             } catch {
               return [id, []]
             }
@@ -431,7 +748,9 @@ export default function CreateExam() {
       const opens = new Date(pktToIso(windowDate, windowStart)).getTime()
       const closes = new Date(pktToIso(windowDate, windowEnd)).getTime()
       if (!(closes > opens)) errs.window = 'End time must be after the start time'
-      else if ((closes - opens) / 60000 < Number(duration)) {
+      else if (opens < Date.now() - 60 * 1000) {
+        errs.window = 'Start time has already passed. Pick a later time.'
+      } else if ((closes - opens) / 60000 < Number(duration)) {
         errs.window = `The window must be at least ${Number(duration)} minutes, the length of the paper`
       } else if (closes <= Date.now()) errs.window = 'This window has already ended. Pick a later time'
     }
@@ -540,6 +859,9 @@ export default function CreateExam() {
   function onPipeDone(result) {
     setBusy(false)
     setPipePromise(null)
+    clearExamDraft(userId)
+    allowLeaveRef.current = true
+    setBaseline(snapshotRef.current)
     const exam = result?.exam
     const warns = result?.warnings || []
     if (warns.length) setWarnings(warns)
@@ -568,19 +890,33 @@ export default function CreateExam() {
       lower.includes('rate_limit')
     const isProviderNoise =
       lower.includes("{'error'") || lower.includes('{"error"')
+    const alreadyClear =
+      lower.includes('not configured') ||
+      lower.includes('api key') ||
+      lower.includes('too long') ||
+      lower.includes('too large') ||
+      lower.includes('busy') ||
+      lower.includes('press retry') ||
+      lower.includes('valid questions') ||
+      lower.includes('start time') ||
+      lower.includes('exam window') ||
+      lower.includes('unavailable') ||
+      lower.includes('invalid request') ||
+      lower.includes('not included')
     const isModelFail =
-      code === 'LLM_FAILED' ||
-      lower.includes('invalid json') ||
-      lower.includes('empty response') ||
-      lower.includes('could not generate') ||
-      lower.includes('could not finish')
+      !alreadyClear &&
+      (lower.includes('invalid json') ||
+        lower.includes('empty response') ||
+        lower.includes('could not generate the paper') ||
+        lower.includes('did not contain a valid json') ||
+        (code === 'LLM_FAILED' && lower.includes('could not generate')))
     if (isSizeOrBusy || isProviderNoise) {
       msg =
         'The AI could not finish this draft — the material may be too large for one pass, or the service was busy. Try fewer source files or a shorter document, then press Retry.'
     } else if (isModelFail) {
       msg = "This model could not generate the paper. Please retry with another model, or try again."
-    } else if (msg.length > 220) {
-      msg = `${msg.slice(0, 200).trim()}…`
+    } else if (msg.length > 320) {
+      msg = `${msg.slice(0, 300).trim()}…`
     }
     setLlmFailed(msg)
     setFieldErrors({ materials: msg })
@@ -621,6 +957,21 @@ export default function CreateExam() {
           {llmNote}{' '}
           <Link to="/app/teacher/settings">Open Settings</Link>
         </p>
+      ) : null}
+
+      {draftRestored ? (
+        <div className="callout">
+          <Icon name="info" />
+          <div>
+            <b>Saved draft restored.</b> Your class, question mix, window and blueprint are back.
+            Generate when you are ready, or discard it.
+            <div style={{ marginTop: 8 }}>
+              <button type="button" className="btn small" onClick={discardSavedDraft}>
+                Discard saved draft
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {!materials.length ? (
@@ -1130,6 +1481,7 @@ export default function CreateExam() {
                         units={outlines[p.material_id] || []}
                         selectedKeys={p.unitKeys || []}
                         disabled={busy}
+                        showSelectAll
                         onChange={(keys) =>
                           setPinRows((prev) =>
                             prev.map((x) => (x.id === p.id ? { ...x, unitKeys: keys } : x)),
@@ -1198,17 +1550,28 @@ export default function CreateExam() {
               </Field>
             ) : null}
 
-            <button
-              type="button"
-              className={`btn primary${busy ? ' busy' : ''}`}
-              onClick={startGenerate}
-              disabled={busy || !materials.length}
-              aria-busy={busy}
-              aria-describedby={!materials.length ? 'gen-why' : undefined}
-              style={{ width: '100%', minHeight: 48 }}
-            >
-              Generate draft paper
-            </button>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={saveDraftNow}
+                disabled={busy || !classId}
+                style={{ minHeight: 48 }}
+              >
+                Save draft
+              </button>
+              <button
+                type="button"
+                className={`btn primary${busy ? ' busy' : ''}`}
+                onClick={startGenerate}
+                disabled={busy || !materials.length}
+                aria-busy={busy}
+                aria-describedby={!materials.length ? 'gen-why' : undefined}
+                style={{ flex: 1, minHeight: 48 }}
+              >
+                Generate draft paper
+              </button>
+            </div>
             {materials.length ? (
               <p className="small" style={{ margin: '8px 0 0' }}>
                 Next you review every question before anything is sent or published.

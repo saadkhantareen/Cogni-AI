@@ -28,16 +28,22 @@ export function isoToPktParts(value) {
   return { date: shifted.slice(0, 10), time: shifted.slice(11, 16) }
 }
 
-/** Form defaults: today in PKT, from the start of the current hour, open for `hours`. */
+/**
+ * Form defaults: today in PKT, starting at the next 5-minute mark (never the
+ * top of an hour that has already passed), open for `hours`.
+ */
 export function defaultPktWindow(hours = 3) {
-  const nowPkt = new Date(Date.now() + PKT_OFFSET_MS)
-  nowPkt.setUTCMinutes(0, 0, 0)
-  const end = new Date(nowPkt.getTime() + hours * 60 * 60 * 1000)
-  const sameDay = end.toISOString().slice(0, 10) === nowPkt.toISOString().slice(0, 10)
+  const step = 5 * 60 * 1000
+  let startMs = Math.ceil(Date.now() / step) * step
+  if (startMs <= Date.now()) startMs += step
+  const endMs = startMs + hours * 60 * 60 * 1000
+  const startPkt = new Date(startMs + PKT_OFFSET_MS)
+  const endPkt = new Date(endMs + PKT_OFFSET_MS)
+  const sameDay = endPkt.toISOString().slice(0, 10) === startPkt.toISOString().slice(0, 10)
   return {
-    date: nowPkt.toISOString().slice(0, 10),
-    start: nowPkt.toISOString().slice(11, 16),
-    end: sameDay ? end.toISOString().slice(11, 16) : '23:59',
+    date: startPkt.toISOString().slice(0, 10),
+    start: startPkt.toISOString().slice(11, 16),
+    end: sameDay ? endPkt.toISOString().slice(11, 16) : '23:59',
   }
 }
 

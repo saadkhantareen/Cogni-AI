@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Outlet, RouterProvider } from 'react-router-dom'
 import IconSprite from './components/IconSprite'
 import { ThemeProvider } from './hooks/useTheme'
 import { AuthProvider } from './auth/AuthContext'
@@ -20,64 +20,74 @@ import HodApp from './pages/hod/HodApp'
 import StudentApp from './pages/student/StudentApp'
 import NotFound from './pages/NotFound'
 
+function AppRoutes() {
+  return (
+    <ModalProvider>
+      <AuthRedirector>
+        <Outlet />
+      </AuthRedirector>
+    </ModalProvider>
+  )
+}
+
+const router = createBrowserRouter([
+  {
+    element: <AppRoutes />,
+    children: [
+      { path: '/', element: <Landing /> },
+      { path: '/setup', element: <Setup /> },
+      { path: '/login', element: <Login /> },
+      { path: '/register', element: <Register /> },
+      { path: '/verify/:token', element: <VerifyEmail /> },
+      { path: '/forgot', element: <Forgot /> },
+      { path: '/reset/:token', element: <Reset /> },
+      { path: '/change-password', element: <ChangePassword /> },
+      {
+        path: '/app/admin/*',
+        element: (
+          <RoleRoute roles={['admin']}>
+            <AdminApp />
+          </RoleRoute>
+        ),
+      },
+      {
+        path: '/app/hod/*',
+        element: (
+          <RoleRoute roles={['hod']}>
+            <HodApp />
+          </RoleRoute>
+        ),
+      },
+      {
+        path: '/app/teacher/*',
+        element: (
+          <RoleRoute roles={['teacher']}>
+            <TeacherApp />
+          </RoleRoute>
+        ),
+      },
+      {
+        path: '/app/student/*',
+        element: (
+          <RoleRoute roles={['student']}>
+            <StudentApp />
+          </RoleRoute>
+        ),
+      },
+      { path: '/app', element: <Navigate to="/login" replace /> },
+      { path: '*', element: <NotFound /> },
+    ],
+  },
+])
+
 export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
         <ToastProvider>
           <IconSprite />
-          <BrowserRouter>
-            {/* Modal must sit inside the router so modal content can use <Link>. */}
-            <ModalProvider>
-              <AuthRedirector>
-                <Routes>
-                  <Route path="/" element={<Landing />} />
-                  <Route path="/setup" element={<Setup />} />
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/register" element={<Register />} />
-                  <Route path="/verify/:token" element={<VerifyEmail />} />
-                  <Route path="/forgot" element={<Forgot />} />
-                  <Route path="/reset/:token" element={<Reset />} />
-                  <Route path="/change-password" element={<ChangePassword />} />
-
-                  <Route
-                    path="/app/admin/*"
-                    element={
-                      <RoleRoute roles={['admin']}>
-                        <AdminApp />
-                      </RoleRoute>
-                    }
-                  />
-                  <Route
-                    path="/app/hod/*"
-                    element={
-                      <RoleRoute roles={['hod']}>
-                        <HodApp />
-                      </RoleRoute>
-                    }
-                  />
-                  <Route
-                    path="/app/teacher/*"
-                    element={
-                      <RoleRoute roles={['teacher']}>
-                        <TeacherApp />
-                      </RoleRoute>
-                    }
-                  />
-                  <Route
-                    path="/app/student/*"
-                    element={
-                      <RoleRoute roles={['student']}>
-                        <StudentApp />
-                      </RoleRoute>
-                    }
-                  />
-                  <Route path="/app" element={<Navigate to="/login" replace />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </AuthRedirector>
-            </ModalProvider>
-          </BrowserRouter>
+          {/* Data router so exam generation can ask before leaving the page. */}
+          <RouterProvider router={router} />
         </ToastProvider>
       </AuthProvider>
     </ThemeProvider>

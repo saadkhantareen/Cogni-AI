@@ -193,7 +193,7 @@ export default function Settings() {
             </>
           ) : (
             <p className="small" style={{ margin: 0 }}>
-              Platform default uses the server LLM (VyceAI Claude Sonnet 4.6) configured by your admin.
+              Platform default uses the server LLM (Agnes 3.0 Flash, with Agnes 2.5 Flash as fallback) configured by your admin.
             </p>
           )}
 

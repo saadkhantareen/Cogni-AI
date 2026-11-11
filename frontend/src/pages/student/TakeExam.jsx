@@ -1,4 +1,5 @@
 import { isMcqQuestion } from '../../utils/teacher'
+import { plainifyExamText } from '../../utils/examText'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import * as api from '../../api'
@@ -1056,7 +1057,7 @@ export default function TakeExam() {
                 maxWidth: '68ch',
               }}
             >
-              {q.text}
+              {plainifyExamText(q.text)}
             </p>
 
             {isMcqQuestion(q) ? (
@@ -1093,7 +1094,7 @@ export default function TakeExam() {
                         <span className="k" aria-hidden="true">
                           {LETTERS[k]}
                         </span>
-                        <span>{o}</span>
+                        <span>{plainifyExamText(o)}</span>
                         {sel ? (
                           <span className="sel-lab" aria-hidden="true">
                             <Icon name="check" className="sm" />

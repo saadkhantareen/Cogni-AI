@@ -22,37 +22,131 @@ class LLMJSONError(LLMError):
     """The provider's response could not be parsed as JSON."""
 
 
-def _extract_json(text: str) -> dict:
-    """Parse the first JSON object found in `text`, stripping Markdown code
-    fences first. Raises LLMJSONError if none is found or it doesn't parse."""
+def _strip_model_noise(text: str) -> str:
+    """Drop thinking blocks and a single surrounding Markdown fence."""
     text = (text or "").strip()
-    fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL | re.IGNORECASE)
     if fence:
         text = fence.group(1).strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    start = text.find("{")
-    if start != -1:
+    return text.strip()
+
+
+def _message_text(message) -> str:
+    """Plain text from a chat message. Some proxies return a list of parts,
+    or put the answer on a reasoning field and leave content empty."""
+    if message is None:
+        return ""
+    content = getattr(message, "content", None)
+    parts: list[str] = []
+    if isinstance(content, str):
+        parts.append(content)
+    elif isinstance(content, list):
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                parts.append(str(part.get("text") or part.get("content") or ""))
+            else:
+                parts.append(str(getattr(part, "text", "") or ""))
+    text = "\n".join(p for p in parts if p).strip()
+    if text:
+        return text
+    for attr in ("reasoning", "reasoning_content"):
+        extra = getattr(message, attr, None)
+        if isinstance(extra, str) and extra.strip():
+            return extra.strip()
+    return ""
+
+
+def _balanced_json_objects(text: str) -> list:
+    """Every complete top-level-ish JSON object in `text` (string-aware)."""
+    found: list = []
+    i = 0
+    n = len(text)
+    while i < n:
+        start = text.find("{", i)
+        if start < 0:
+            break
         depth = 0
-        for i in range(start, len(text)):
-            if text[i] == "{":
+        in_str = False
+        esc = False
+        end = None
+        for j in range(start, n):
+            ch = text[j]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
                 depth += 1
-            elif text[i] == "}":
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    try:
-                        return json.loads(text[start : i + 1])
-                    except json.JSONDecodeError:
-                        break
-    raise LLMJSONError("The AI response did not contain a valid JSON object.")
+                    end = j
+                    break
+        if end is None:
+            # Truncated outer object: keep scanning for complete objects inside it.
+            i = start + 1
+            continue
+        blob = text[start : end + 1]
+        i = end + 1
+        try:
+            found.append(json.loads(blob))
+        except json.JSONDecodeError:
+            continue
+    return found
+
+
+def _extract_json(text: str) -> dict:
+    """Parse the first JSON object found in `text`, stripping Markdown code
+    fences first. If the model truncated the outer object, keep any complete
+    question objects. Raises LLMJSONError if nothing usable is found."""
+    text = _strip_model_noise(text)
+    if not text:
+        raise LLMJSONError("The AI response did not contain a valid JSON object.")
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+    if isinstance(parsed, list):
+        return {"questions": parsed}
+
+    objects = [obj for obj in _balanced_json_objects(text) if isinstance(obj, dict)]
+    if not objects:
+        raise LLMJSONError("The AI response did not contain a valid JSON object.")
+    first = objects[0]
+    # A complete payload (mock prompt, or a finished model object) wins.
+    # Inner chunk objects also have "text", so they must not replace it.
+    if any(key in first for key in ("questions", "chunks", "counts", "mode", "results", "exam")):
+        return first
+    questions = [
+        obj
+        for obj in objects
+        if (obj.get("text") or obj.get("stem") or obj.get("question") or obj.get("question_text"))
+        and (obj.get("type") or obj.get("bloom") or obj.get("options") or obj.get("model_answer"))
+    ]
+    if questions:
+        return {"questions": questions}
+    return first
 
 
 def _is_transient_provider_error(exc: BaseException) -> bool:
-    """True for errors worth trying on another model: 429 rate limits and
-    transient provider failures (502/503/529). Auth (401/403) and size
-    (413) errors are not transient across models with the same key."""
+    """True for errors worth trying on another model.
+
+    Rate limits and provider 502/503/529 qualify. So does VyceAI's generic
+    "invalid request" / "model unavailable" response: that is per-model
+    (the free key cannot call Claude, or a free model is down), not a bad
+    prompt. Auth (401 / invalid api key) and size (413) do not qualify.
+    """
     raw = str(exc).lower()
     return any(
         token in raw
@@ -66,6 +160,14 @@ def _is_transient_provider_error(exc: BaseException) -> bool:
             "529",
             "provider returned error",
             "service is busy",
+            "invalid request",
+            "temporarily disabled",
+            "currently unavailable",
+            "unavailable",
+            "in maintenance",
+            "does not exist",
+            "model_disabled",
+            "try again later",
         )
     )
 
@@ -94,6 +196,26 @@ def _friendly_llm_error(exc: BaseException) -> str:
         return "The AI service is not configured correctly. Ask an admin to check the API key."
     if "timeout" in lower or "timed out" in lower:
         return "The AI took too long to respond. Press Retry — shorter material usually helps."
+    if "invalid request" in lower:
+        return (
+            "The AI provider rejected this model. "
+            "Press Retry, or pick another model in Settings."
+        )
+    if (
+        "temporarily disabled" in lower
+        or "currently unavailable" in lower
+        or "in maintenance" in lower
+        or "model_disabled" in lower
+    ):
+        return (
+            "This AI model is temporarily unavailable. "
+            "Press Retry in a few minutes, or pick another model in Settings."
+        )
+    if "requires lite" in lower or "do not have access" in lower:
+        return (
+            "This model is not included on the current AI plan. "
+            "Pick another model in Settings."
+        )
     # Strip nested JSON blobs that confuse users
     if "{'error'" in raw or '{"error"' in raw or "error code:" in lower:
         return "The AI could not finish this request. Press Retry, or use a smaller document."
@@ -122,6 +244,12 @@ class OpenAIClient(LLMClient):
                 provider_for_fallback = "openrouter"
             elif "groq.com" in (url_for_fallback or ""):
                 provider_for_fallback = "groq"
+            elif "vyceai.com" in (url_for_fallback or ""):
+                provider_for_fallback = "vyceai"
+            elif "agnes-ai.com" in (url_for_fallback or "") or "agnes-ai.cn" in (
+                url_for_fallback or ""
+            ):
+                provider_for_fallback = "agnes"
             else:
                 provider_for_fallback = ""
             if provider_for_fallback:
@@ -209,9 +337,14 @@ class OpenAIClient(LLMClient):
                         "This model could not generate the paper. "
                         "Please retry with another model, or try again."
                     ) from exc
+                if "429" in str(exc) or "rate" in str(exc).lower() or "busy" in str(exc).lower():
+                    raise LLMRequestError(
+                        "The AI service is busy on all available free models. "
+                        "Try again later, or switch to another model in Settings."
+                    ) from exc
                 raise LLMRequestError(
-                    "The AI service is busy on all available free models. "
-                    "Try again later, or switch to another model in Settings."
+                    "The AI provider is unavailable right now. "
+                    f"{exc} Try again in a few minutes."
                 ) from exc
             self.last_model_used = model_id
             if model_id != self._model:
@@ -278,9 +411,11 @@ class OpenAIClient(LLMClient):
             detail = _friendly_llm_error(exc)
             log_event(logger, "llm_provider_error", provider="openai", error=str(exc)[:500])
             raise LLMRequestError(detail) from exc
-        content = response.choices[0].message.content or ""
+        content = _message_text(response.choices[0].message) if response.choices else ""
         # Free routers sometimes return empty completions; one plain retry helps.
+        retried_plain = False
         if not content.strip():
+            retried_plain = True
             log_event(logger, "llm_empty_completion", provider="openai", model=model)
             try:
                 response = await self._chat(
@@ -290,7 +425,7 @@ class OpenAIClient(LLMClient):
                     json_object=False,
                     model=model,
                 )
-                content = response.choices[0].message.content or ""
+                content = _message_text(response.choices[0].message) if response.choices else ""
             except Exception as exc:
                 raise LLMJSONError("The AI returned an empty response.") from exc
         usage = getattr(response, "usage", None)
@@ -302,7 +437,26 @@ class OpenAIClient(LLMClient):
                 prompt_tokens=getattr(usage, "prompt_tokens", None),
                 completion_tokens=getattr(usage, "completion_tokens", None),
             )
-        return _extract_json(content)
+        try:
+            return _extract_json(content)
+        except LLMJSONError:
+            if retried_plain:
+                raise
+            # json_object mode sometimes yields prose or a truncated object.
+            # One plain retry on the same model recovers a lot of those drafts.
+            log_event(logger, "llm_json_retry_plain", provider="openai", model=model)
+            try:
+                response = await self._chat(
+                    messages,
+                    max_tokens=max_tokens,
+                    temperature=max(temperature, 0.2),
+                    json_object=False,
+                    model=model,
+                )
+                content = _message_text(response.choices[0].message) if response.choices else ""
+            except Exception as exc:
+                raise LLMJSONError("The AI response did not contain a valid JSON object.") from exc
+            return _extract_json(content)
 
     async def vision_text(
         self,

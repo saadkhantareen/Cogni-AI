@@ -53,7 +53,9 @@ def test_teacher_get_default_platform(client):
     assert "api_key_enc" not in body
     providers = {p["id"] for p in body["catalog"]["providers"]}
     assert providers == {"platform", "vyceai", "openrouter", "groq"}
-    assert llm_catalog.is_allowed_model("vyceai", "claude-sonnet-4-6")
+    assert llm_catalog.is_allowed_model("vyceai", "glm-5.3-flash")
+    assert llm_catalog.is_allowed_model("vyceai", "nemotron-3.5-super-vl")
+    assert not llm_catalog.is_allowed_model("vyceai", "claude-sonnet-4-6")
     assert llm_catalog.base_url_for_provider("vyceai").startswith("https://vyceai.com")
 
 
