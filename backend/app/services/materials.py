@@ -56,6 +56,7 @@ def _material_summary(doc: dict) -> dict:
     out["word_count"] = _word_count(doc.get("text", ""))
     out.pop("text", None)
     out.pop("chunks", None)
+    out.pop("file_id", None)
     return out
 
 
@@ -68,7 +69,12 @@ async def _delete_same_name_materials(cls: dict, name: str) -> int:
     target = name.strip().lower()
     async for doc in cursor:
         if str(doc.get("name") or "").strip().lower() == target:
+            file_id = doc.get("file_id")
             await db.materials.delete_one({"_id": doc["_id"]})
+            if file_id:
+                from app.services.material_files import delete_material_file
+
+                await delete_material_file(str(file_id))
             removed += 1
     return removed
 
@@ -82,6 +88,7 @@ async def _insert_material(
     text: str,
     chunks: list[dict],
     replace: bool = False,
+    file_id: str | None = None,
 ) -> dict:
     db = get_db()
     if replace:
@@ -95,6 +102,8 @@ async def _insert_material(
         "chunks": chunks,
         "created_at": datetime.now(UTC),
     }
+    if file_id:
+        doc["file_id"] = file_id
     result = await db.materials.insert_one(doc)
     doc["_id"] = result.inserted_id
 
@@ -132,8 +141,23 @@ async def upload_pdf_material(
     pages = preprocess_pages(pages)
     chunks = chunk_pages(pages)
     text = "\n\n".join(p["text"] for p in pages)
+    from app.services.material_files import store_material_file
+
+    content_type = {
+        "pdf": "application/pdf",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }.get(kind, "application/octet-stream")
+    file_id = await store_material_file(data, filename, content_type)
     return await _insert_material(
-        actor, cls, name=filename, kind=kind, text=text, chunks=chunks, replace=replace
+        actor,
+        cls,
+        name=filename,
+        kind=kind,
+        text=text,
+        chunks=chunks,
+        replace=replace,
+        file_id=file_id,
     )
 
 
@@ -204,5 +228,32 @@ async def delete_material(actor: CurrentUser, material_id: str) -> None:
             status_code=409,
             detail="This material is used by a non-draft exam and cannot be deleted.",
         )
+    file_id = doc.get("file_id")
     await db.materials.delete_one({"_id": doc["_id"]})
+    if file_id:
+        from app.services.material_files import delete_material_file
+
+        await delete_material_file(str(file_id))
     await log_activity(actor, f"Deleted material '{doc['name']}' from {cls['code']}")
+
+
+async def material_preview_pdf(user: CurrentUser, material_id: str) -> tuple[bytes, str]:
+    """PDF the teacher can open in the viewer.
+
+    Original bytes are returned for stored PDFs. Everything else (Word,
+    slides, pasted notes, older uploads with no file) is rendered from the
+    extracted text.
+    """
+    from app.services.material_files import read_material_file
+    from app.services.material_preview import build_material_preview_pdf, preview_filename
+
+    doc = await _get_material_or_404(material_id)
+    cls = await _get_class_or_404(doc["class_id"])
+    _assert_read_access(user, cls)
+    name = str(doc.get("name") or "material")
+    if doc.get("kind") == "pdf" and doc.get("file_id"):
+        original = await read_material_file(str(doc["file_id"]))
+        if original and original.startswith(b"%PDF"):
+            filename = name if name.lower().endswith(".pdf") else f"{name}.pdf"
+            return original, filename
+    return build_material_preview_pdf(name, doc.get("text") or ""), preview_filename(name)

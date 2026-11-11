@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 
 from app.core.deps import CurrentUser, get_current_user, require_role
 from app.core.ratelimit import check_llm_rate_limit
@@ -59,6 +60,17 @@ async def list_materials(class_id: str, user: CurrentUser = Depends(get_current_
 @router.get("/api/materials/{material_id}", response_model=MaterialOut)
 async def get_material(material_id: str, user: CurrentUser = Depends(get_current_user)):
     return await material_service.get_material(user, material_id)
+
+
+@router.get("/api/materials/{material_id}/preview")
+async def preview_material(material_id: str, user: CurrentUser = Depends(get_current_user)):
+    pdf_bytes, filename = await material_service.material_preview_pdf(user, material_id)
+    safe = filename.replace('"', "")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe}"'},
+    )
 
 
 @router.delete("/api/materials/{material_id}", status_code=204)

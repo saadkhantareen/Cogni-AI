@@ -5,7 +5,9 @@ import { ShellError, ShellLoading } from '../../components/AppShell'
 import EmptyState from '../../components/EmptyState'
 import { Icon } from '../../components/IconSprite'
 import PageTop from '../../components/PageTop'
+import PdfViewer from '../../components/PdfViewer'
 import Pill from '../../components/Pill'
+import { useToast } from '../../components/Toast'
 import Tabs from '../../components/Tabs'
 import { formatShortDate } from '../../utils/format'
 
@@ -37,6 +39,49 @@ export default function Exams({ embedded = false, classId = null, classCode } = 
   const [error, setError] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [classFilter, setClassFilter] = useState(classId || 'all')
+  const [paperViewer, setPaperViewer] = useState(null)
+  const [viewBusyId, setViewBusyId] = useState(null)
+  const toast = useToast()
+
+  function closePaperViewer() {
+    setPaperViewer((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url)
+      return null
+    })
+  }
+
+  async function onViewPaper(exam, event) {
+    event?.stopPropagation()
+    setViewBusyId(exam.id)
+    try {
+      const { blob, filename } = await api.fetchExamPdf(exam.id)
+      const url = URL.createObjectURL(blob)
+      setPaperViewer((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url)
+        return { title: exam.title, url, filename }
+      })
+    } catch (err) {
+      toast(err.message || 'Could not open the paper.', { type: 'error' })
+    } finally {
+      setViewBusyId(null)
+    }
+  }
+
+  const paperViewerNode = paperViewer ? (
+    <PdfViewer
+      title={paperViewer.title}
+      url={paperViewer.url}
+      onClose={closePaperViewer}
+      onDownload={() => {
+        const a = document.createElement('a')
+        a.href = paperViewer.url
+        a.download = paperViewer.filename || 'exam.pdf'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }}
+    />
+  ) : null
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -152,6 +197,14 @@ export default function Exams({ embedded = false, classId = null, classCode } = 
                     <button
                       type="button"
                       className="btn small"
+                      disabled={viewBusyId === x.id}
+                      onClick={(e) => onViewPaper(x, e)}
+                    >
+                      {viewBusyId === x.id ? 'Opening…' : 'View paper'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn small"
                       onClick={() => navigate(`/app/teacher/exams/${x.id}`)}
                     >
                       Open paper
@@ -173,6 +226,7 @@ export default function Exams({ embedded = false, classId = null, classCode } = 
         ) : (
           <EmptyState>No exams yet. Create the first one from your material.</EmptyState>
         )}
+        {paperViewerNode}
       </>
     )
   }
@@ -262,6 +316,14 @@ export default function Exams({ embedded = false, classId = null, classCode } = 
                           <button
                             type="button"
                             className="btn small"
+                            disabled={viewBusyId === x.id}
+                            onClick={(e) => onViewPaper(x, e)}
+                          >
+                            {viewBusyId === x.id ? 'Opening…' : 'View paper'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn small"
                             onClick={(e) => {
                               e.stopPropagation()
                               navigate(`/app/teacher/exams/${x.id}`)
@@ -297,6 +359,7 @@ export default function Exams({ embedded = false, classId = null, classCode } = 
           </table>
         </div>
       </div>
+      {paperViewerNode}
     </>
   )
 }

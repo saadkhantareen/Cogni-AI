@@ -10,6 +10,7 @@ import Panel from '../../components/Panel'
 import PipelineSteps from '../../components/PipelineSteps'
 import Tabs from '../../components/Tabs'
 import { useConfirm } from '../../components/ConfirmModal'
+import PdfViewer from '../../components/PdfViewer'
 import { useToast } from '../../components/Toast'
 import { formatShortDate } from '../../utils/format'
 import {
@@ -38,6 +39,8 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [files, setFiles] = useState([])
+  const [viewer, setViewer] = useState(null)
+  const [viewBusyId, setViewBusyId] = useState(null)
   const [notes, setNotes] = useState('')
   const [notesName, setNotesName] = useState('')
   const [pageUrl, setPageUrl] = useState('')
@@ -281,6 +284,29 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
     }
     setFieldError(msg)
     toast(msg, { type: 'error' })
+  }
+
+  function closeViewer() {
+    setViewer((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url)
+      return null
+    })
+  }
+
+  async function onView(m) {
+    setViewBusyId(m.id)
+    try {
+      const { blob, filename } = await api.fetchMaterialPreview(m.id)
+      const url = URL.createObjectURL(blob)
+      setViewer((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url)
+        return { title: m.name, url, filename }
+      })
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not open this document.', { type: 'error' })
+    } finally {
+      setViewBusyId(null)
+    }
   }
 
   async function onDelete(m) {
@@ -575,14 +601,25 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
                     <td className="num">{m.chunk_count ?? '—'}</td>
                     <td>{formatShortDate(m.created_at)}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn small bad"
-                        onClick={() => onDelete(m)}
-                        aria-label={`Delete ${m.name}`}
-                      >
-                        Delete…
-                      </button>
+                      <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+                        <button
+                          type="button"
+                          className="btn small"
+                          onClick={() => onView(m)}
+                          disabled={viewBusyId === m.id}
+                          aria-label={`View ${m.name}`}
+                        >
+                          {viewBusyId === m.id ? 'Opening…' : 'View'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn small bad"
+                          onClick={() => onDelete(m)}
+                          aria-label={`Delete ${m.name}`}
+                        >
+                          Delete…
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -597,6 +634,21 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
           </table>
         </div>
       </div>
+      {viewer ? (
+        <PdfViewer
+          title={viewer.title}
+          url={viewer.url}
+          onClose={closeViewer}
+          onDownload={() => {
+            const a = document.createElement('a')
+            a.href = viewer.url
+            a.download = viewer.filename || 'material.pdf'
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+          }}
+        />
+      ) : null}
     </>
   )
 }

@@ -7,6 +7,7 @@ import { useConfirm } from '../../components/ConfirmModal'
 import EmptyState from '../../components/EmptyState'
 import { Icon } from '../../components/IconSprite'
 import PageTop from '../../components/PageTop'
+import PdfViewer from '../../components/PdfViewer'
 import Panel from '../../components/Panel'
 import Pill from '../../components/Pill'
 import QuestionCard from '../../components/QuestionCard'
@@ -133,6 +134,7 @@ export default function ExamEditor() {
   const [regenQid, setRegenQid] = useState(null)
   const [editedQids, setEditedQids] = useState(() => new Set())
   const [busyAction, setBusyAction] = useState(null)
+  const [paperViewer, setPaperViewer] = useState(null)
   const [filterType, setFilterType] = useState('')
   const [filterBloom, setFilterBloom] = useState('')
 
@@ -450,6 +452,29 @@ export default function ExamEditor() {
     }
   }
 
+  function closePaperViewer() {
+    setPaperViewer((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url)
+      return null
+    })
+  }
+
+  const onViewPaper = async () => {
+    setBusyAction('view')
+    try {
+      const { blob, filename } = await api.fetchExamPdf(id)
+      const url = URL.createObjectURL(blob)
+      setPaperViewer((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url)
+        return { title: exam?.title || 'Exam paper', url, filename }
+      })
+    } catch (err) {
+      toast(err.message || 'Could not open the paper.', { type: 'error' })
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
   if (loading) return <ShellLoading label="Loading exam…" />
   if (error) {
     return <ShellError message={error.message || 'Exam not found.'} onRetry={load} />
@@ -458,14 +483,24 @@ export default function ExamEditor() {
 
   const status = exam.status
   const downloadBtn = (
-    <button
-      type="button"
-      className="btn"
-      onClick={onDownloadPdf}
-      disabled={!!busyAction}
-    >
-      {busyAction === 'pdf' ? 'Downloading…' : 'Download PDF'}
-    </button>
+    <>
+      <button
+        type="button"
+        className="btn"
+        onClick={onViewPaper}
+        disabled={!!busyAction}
+      >
+        {busyAction === 'view' ? 'Opening…' : 'View paper'}
+      </button>
+      <button
+        type="button"
+        className="btn"
+        onClick={onDownloadPdf}
+        disabled={!!busyAction}
+      >
+        {busyAction === 'pdf' ? 'Downloading…' : 'Download PDF'}
+      </button>
+    </>
   )
   let acts = null
   if (editable) {
@@ -790,6 +825,21 @@ export default function ExamEditor() {
           </Panel>
         </div>
       </div>
+      {paperViewer ? (
+        <PdfViewer
+          title={paperViewer.title}
+          url={paperViewer.url}
+          onClose={closePaperViewer}
+          onDownload={() => {
+            const a = document.createElement('a')
+            a.href = paperViewer.url
+            a.download = paperViewer.filename || 'exam.pdf'
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+          }}
+        />
+      ) : null}
     </>
   )
 }

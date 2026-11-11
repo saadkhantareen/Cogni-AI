@@ -202,10 +202,8 @@ export function getExam(id) {
   return get(`/exams/${id}`)
 }
 
-/** Download student-facing exam PDF (teacher/HOD). Triggers a browser file save. */
-export async function downloadExamPdf(id) {
+async function fetchAuthorizedBlob(apiPath, fallbackName) {
   const API_BASE = String(import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
-  const apiPath = `/api/exams/${id}/pdf`
   const url = API_BASE ? `${API_BASE}${apiPath}` : apiPath
   const headers = new Headers()
   const token = getToken()
@@ -217,7 +215,7 @@ export async function downloadExamPdf(id) {
     throw new ApiError(0, 'NETWORK_ERROR', 'Network error. Check your connection and try again.')
   }
   if (!res.ok) {
-    let message = 'Could not download PDF.'
+    let message = 'Could not open the PDF.'
     try {
       const body = await res.json()
       if (typeof body?.detail === 'string') message = body.detail
@@ -227,10 +225,14 @@ export async function downloadExamPdf(id) {
     throw new ApiError(res.status, 'ERROR', message)
   }
   const blob = await res.blob()
-  let filename = 'exam.pdf'
+  let filename = fallbackName
   const cd = res.headers.get('Content-Disposition') || ''
   const m = /filename="?([^";]+)"?/i.exec(cd)
   if (m) filename = m[1]
+  return { blob, filename }
+}
+
+function saveBlob(blob, filename) {
   const href = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = href
@@ -239,6 +241,22 @@ export async function downloadExamPdf(id) {
   a.click()
   a.remove()
   URL.revokeObjectURL(href)
+}
+
+/** Download student-facing exam PDF (teacher/HOD). Triggers a browser file save. */
+export async function downloadExamPdf(id) {
+  const { blob, filename } = await fetchAuthorizedBlob(`/api/exams/${id}/pdf`, 'exam.pdf')
+  saveBlob(blob, filename)
+}
+
+/** Exam PDF bytes for the in-app viewer. Caller revokes the object URL. */
+export function fetchExamPdf(id) {
+  return fetchAuthorizedBlob(`/api/exams/${id}/pdf`, 'exam.pdf')
+}
+
+/** Uploaded material as a PDF (original PDF, or a text preview for other kinds). */
+export function fetchMaterialPreview(id) {
+  return fetchAuthorizedBlob(`/api/materials/${id}/preview`, 'material.pdf')
 }
 
 export function patchExam(id, body) {
