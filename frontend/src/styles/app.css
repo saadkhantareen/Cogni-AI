@@ -507,14 +507,17 @@ h1,h2,h3,h4{letter-spacing:-.02em}
 .slide-chips{display:flex;flex-wrap:wrap;gap:6px}
 .slide-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px;border-radius:999px;border:1px solid color-mix(in srgb,var(--color-primary) 45%,var(--color-border));background:var(--color-primary-muted);color:var(--color-foreground);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
 .slide-chip:hover{border-color:var(--color-primary)}
-.slide-chip-lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px}
-.slide-picker-list{max-height:168px;overflow:auto;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-muted)}
+.slide-chip-lab{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;max-width:320px;text-align:left;line-height:1.35}
+.slide-picker-list{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-sm);background:var(--color-muted)}
 .slide-opt{display:flex;align-items:flex-start;gap:10px;margin:0;padding:8px 10px;border-radius:10px;cursor:pointer;border:1px solid transparent;background:var(--color-card);color:var(--color-foreground)}
 .slide-opt:hover{border-color:var(--color-border)}
 .slide-opt.on{border-color:color-mix(in srgb,var(--color-primary) 55%,var(--color-border));background:var(--color-primary-muted)}
-.slide-opt input{margin-top:2px;accent-color:var(--color-primary)}
-.slide-opt-lab{flex:1;font-size:13.5px;line-height:1.35;min-width:0}
+.slide-opt.select-all{border-style:dashed;border-color:var(--color-border);background:transparent}
+.slide-opt.select-all.on{background:var(--color-primary-muted)}
+.slide-opt input{margin-top:2px;accent-color:var(--color-primary);flex:none}
+.slide-opt-lab{flex:1;font-size:13.5px;line-height:1.35;min-width:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .slide-opt-pg{margin-left:6px;opacity:.55;font-size:12px;font-weight:600}
+.slide-select-all-hint{display:block;margin-top:2px;font-size:12px;font-weight:500;color:var(--color-muted-foreground);-webkit-line-clamp:2}
 
 /* Appearance theme picker (Settings) */
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
@@ -808,8 +811,28 @@ td.empty::before,tr .empty::before{width:64px;height:54px}
 .cbanner{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--space-lg);flex-wrap:wrap;padding:var(--space-2xl) var(--space-xl) var(--space-xl);border-radius:var(--radius-lg);background:var(--hue);color:#F6F4EE;margin:var(--space-sm) 0 var(--space-lg)}
 .cbanner .small{color:rgba(246,244,238,.85)}
 .cbanner h1{font-size:clamp(36px,5vw,60px);margin-top:8px;color:#F6F4EE}
-.cjoin{display:flex;flex-direction:column;gap:2px;padding:10px 16px;border-radius:14px;background:rgba(0,0,0,.28)}
+.cjoin{display:flex;flex-direction:column;gap:2px;padding:10px 16px;border-radius:14px;background:rgba(0,0,0,.28);color:#F6F4EE}
 .cjoin b{font-size:18px;color:#F6F4EE}
+/* Banner is dark; default .btn:not(.primary)… uses page foreground (near-black
+   in light theme) at higher specificity, so Copy was invisible. */
+.cbanner .cjoin .btn,
+.cbanner .cjoin .btn:not(.primary):not(.good):not(.ghost):not(.bad){
+  color:#F6F4EE;
+  background:rgba(246,244,238,.14);
+  border:1px solid rgba(246,244,238,.55);
+  box-shadow:none;
+  align-self:flex-start;
+}
+.cbanner .cjoin .btn:hover:not(:disabled),
+.cbanner .cjoin .btn:not(.primary):not(.good):not(.ghost):not(.bad):hover:not(:disabled){
+  color:#F6F4EE;
+  background:rgba(246,244,238,.26);
+  border-color:#F6F4EE;
+}
+.cbanner .cjoin .btn:focus-visible{
+  outline:2px solid #F6F4EE;
+  outline-offset:2px;
+}
 .ctabs{margin-bottom:var(--space-2xl)}
 .cnotes{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:var(--space-lg)}
 .sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:var(--space-lg)}
