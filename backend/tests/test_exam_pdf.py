@@ -33,8 +33,8 @@ def _hline_count(pdf: bytes) -> int:
         doc.close()
 
 
-def test_formal_pdf_sections_no_answer_blanks():
-    exam = {
+def _sample_exam() -> dict:
+    return {
         "title": "Biochemistry Midterm",
         "kind": "Midterm",
         "duration_min": 60,
@@ -63,8 +63,11 @@ def test_formal_pdf_sections_no_answer_blanks():
             },
         ],
     }
+
+
+def test_formal_pdf_sections_no_answer_blanks():
     pdf, filename = build_exam_pdf(
-        exam, class_code="BCH-001", class_name="Biochemistry"
+        _sample_exam(), class_code="BCH-001", class_name="Biochemistry"
     )
     assert filename.endswith(".pdf")
     text = _text(pdf)
@@ -78,5 +81,27 @@ def test_formal_pdf_sections_no_answer_blanks():
     assert "End of Examination" in text
     assert "SECRET_SHORT" not in text
     assert "SECRET_ESSAY" not in text
+    assert "Demo University" not in text
+    assert "Teacher:" not in text
     # Identity header rule(s) only — not 3 answer underlines per written question.
     assert _hline_count(pdf) <= 3
+
+
+def test_formal_pdf_includes_uni_batch_teacher_header():
+    pdf, _filename = build_exam_pdf(
+        _sample_exam(),
+        class_code="BCH-001",
+        class_name="Biochemistry",
+        institution_name="Demo University",
+        batch_name="Fall 2026",
+        teacher_name="Dr. Ada Lovelace",
+    )
+    text = _text(pdf)
+    assert "Demo University" in text
+    assert "Fall 2026" in text
+    assert "Teacher: Dr. Ada Lovelace" in text
+    assert text.index("Demo University") < text.index("BIOCHEMISTRY MIDTERM EXAMINATION")
+    assert text.index("Fall 2026") < text.index("BIOCHEMISTRY MIDTERM EXAMINATION")
+    assert text.index("Teacher: Dr. Ada Lovelace") < text.index(
+        "BIOCHEMISTRY MIDTERM EXAMINATION"
+    )

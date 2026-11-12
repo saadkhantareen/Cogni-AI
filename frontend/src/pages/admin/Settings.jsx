@@ -191,10 +191,10 @@ export default function Settings() {
           <div className="grid g2e">
             <div className="panel">
               <div className="panel-h">
-                <h3>Institution</h3>
+                <h3>University</h3>
               </div>
               <div className="panel-b">
-                <Field id="st-inst" label="Institution name">
+                <Field id="st-inst" label="University name">
                   <input
                     id="st-inst"
                     value={institutionName}
@@ -203,13 +203,17 @@ export default function Settings() {
                     placeholder="Your university or school"
                   />
                 </Field>
-                <Field id="st-term" label="Current term">
+                <Field
+                  id="st-term"
+                  label="Batch name"
+                  hint="Shown on exam papers. New classes also use this as their section."
+                >
                   <input
                     id="st-term"
                     value={currentTerm}
                     onChange={(e) => setCurrentTerm(e.target.value)}
                     disabled={saving}
-                    placeholder="e.g. Autumn term"
+                    placeholder="e.g. Fall 2026"
                   />
                 </Field>
                 <label className="apopt">

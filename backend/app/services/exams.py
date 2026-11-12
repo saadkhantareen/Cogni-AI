@@ -219,6 +219,20 @@ async def get_exam_pdf(user: CurrentUser, exam_id: str) -> tuple[bytes, str]:
     class_code = (cls.get("code") or "").strip()
     class_name = (cls.get("name") or "").strip()
     class_label = f"{class_code} · {class_name}".strip(" ·")
+
+    settings = await settings_service.get_settings()
+    institution_name = (settings.get("institution_name") or "").strip()
+    batch_name = (cls.get("section") or "").strip() or (
+        settings.get("current_term") or ""
+    ).strip()
+    teacher_name = ""
+    teacher_id = exam.get("teacher_id")
+    if teacher_id:
+        db = get_db()
+        teacher = await db.users.find_one({"_id": oid(teacher_id)})
+        if teacher:
+            teacher_name = (teacher.get("name") or "").strip()
+
     # Strip answers so the PDF is always the student paper.
     paper = _strip_for_student(exam)
     return build_exam_pdf(
@@ -226,6 +240,9 @@ async def get_exam_pdf(user: CurrentUser, exam_id: str) -> tuple[bytes, str]:
         class_label=class_label or None,
         class_code=class_code or None,
         class_name=class_name or None,
+        institution_name=institution_name or None,
+        batch_name=batch_name or None,
+        teacher_name=teacher_name or None,
     )
 
 

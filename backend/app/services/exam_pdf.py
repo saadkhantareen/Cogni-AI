@@ -161,6 +161,9 @@ def build_exam_pdf(
     class_label: str | None = None,
     class_code: str | None = None,
     class_name: str | None = None,
+    institution_name: str | None = None,
+    batch_name: str | None = None,
+    teacher_name: str | None = None,
 ) -> tuple[bytes, str]:
     """Return (pdf_bytes, filename) for a formal student paper — no answers/blanks."""
     doc = pymupdf.open()
@@ -179,6 +182,25 @@ def build_exam_pdf(
 
     total_marks = sum(float(q.get("marks") or 0) for q in questions)
     total_s = str(int(total_marks)) if float(total_marks).is_integer() else str(total_marks)
+
+    uni = (institution_name or "").strip()
+    batch = (batch_name or "").strip()
+    teacher = (teacher_name or "").strip()
+    if uni:
+        page, y = _write_block(
+            doc, page, y, uni, fontsize=TITLE_SIZE + 1, fontname="hebo", align=1
+        )
+        y += 2
+    if batch:
+        page, y = _write_block(doc, page, y, batch, fontsize=META_SIZE, align=1)
+        y += 2
+    if teacher:
+        page, y = _write_block(
+            doc, page, y, f"Teacher: {teacher}", fontsize=META_SIZE, align=1
+        )
+        y += 2
+    if uni or batch or teacher:
+        y += 6
 
     exam_heading = f"{title.strip().upper()} EXAMINATION"
     page, y = _write_block(

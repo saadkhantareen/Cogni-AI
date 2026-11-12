@@ -59,7 +59,7 @@ export default function Setup() {
       title="Create your institution"
       subtitle="You are the first admin. Set your sign-in details and how the portal should appear to staff and students."
       sideTitle="Welcome to Cogni.ai"
-      sideBody="This one-time setup creates the admin account and saves your institution name and term for the sidebar."
+      sideBody="This one-time setup creates the admin account and saves your university and batch name for the sidebar and exam papers."
     >
       {error ? (
         <div className="err" role="alert">
@@ -112,7 +112,7 @@ export default function Setup() {
         <p className="small">At least 10 characters; not your email or a common password.</p>
       </div>
       <div className="field">
-        <label htmlFor="su-inst">Institution name</label>
+        <label htmlFor="su-inst">University name</label>
         <input
           id="su-inst"
           value={institution}
@@ -122,14 +122,15 @@ export default function Setup() {
         />
       </div>
       <div className="field">
-        <label htmlFor="su-term">Current term</label>
+        <label htmlFor="su-term">Batch name</label>
         <input
           id="su-term"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           disabled={busy}
-          placeholder="e.g. Autumn term"
+          placeholder="e.g. Fall 2026"
         />
+        <span className="hint">Shown on exam papers. New classes also use this as their section.</span>
       </div>
       <button
         type="button"
