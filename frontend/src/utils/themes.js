@@ -87,21 +87,21 @@ export function normalizeMode(mode) {
 
 /** Resolve mode/palette for a logged-in user (account prefs → per-user local → defaults). */
 export function resolveAppearanceForUser(user) {
-  let mode = normalizeMode(user?.theme_mode)
+  let mode = user?.theme_mode ? normalizeMode(user.theme_mode) : null
   let palette = isValidPalette(user?.theme_palette) ? user.theme_palette : null
   const uid = user?.id
   try {
-    if (!user?.theme_mode) {
-      const saved = localStorage.getItem(themeModeKey(uid)) || localStorage.getItem(THEME_MODE_KEY)
+    // Portal prefs only — never inherit global public-page keys (those stay Clay Gold).
+    if (!mode && uid) {
+      const saved = localStorage.getItem(themeModeKey(uid))
       if (saved === 'light' || saved === 'dark') mode = saved
     }
-    if (!palette) {
-      const saved =
-        localStorage.getItem(themePaletteKey(uid)) || localStorage.getItem(THEME_PALETTE_KEY)
+    if (!palette && uid) {
+      const saved = localStorage.getItem(themePaletteKey(uid))
       if (isValidPalette(saved)) palette = saved
     }
   } catch {
     /* ignore */
   }
-  return { mode, palette: palette || DEFAULT_PALETTE }
+  return { mode: mode || DEFAULT_MODE, palette: palette || DEFAULT_PALETTE }
 }

@@ -9,6 +9,7 @@ import {
 } from 'react'
 import * as api from '../api'
 import {
+  DEFAULT_MODE,
   DEFAULT_PALETTE,
   THEME_MODE_KEY,
   THEME_PALETTE_KEY,
@@ -23,50 +24,33 @@ import {
 
 const ThemeContext = createContext(null)
 
-function readMode() {
-  try {
-    const t = localStorage.getItem(THEME_MODE_KEY)
-    if (t === 'light' || t === 'dark') return t
-  } catch {
-    /* ignore */
-  }
-  if (typeof document !== 'undefined' && document.documentElement.dataset.theme) {
-    return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
-  }
-  try {
-    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  } catch {
-    return 'light'
-  }
-}
-
-function readPalette() {
-  try {
-    const p = localStorage.getItem(THEME_PALETTE_KEY)
-    if (isValidPalette(p)) return p
-  } catch {
-    /* ignore */
-  }
-  if (typeof document !== 'undefined' && document.documentElement.dataset.palette) {
-    const p = document.documentElement.dataset.palette
-    if (isValidPalette(p)) return p
-  }
-  return DEFAULT_PALETTE
-}
-
+/**
+ * Apply appearance to <html>.
+ * - Logged-in (userId): portal prefs → user-scoped localStorage only.
+ * - Public (no userId): always Clay Gold palette; mode may be light/dark for landing.
+ */
 function applyAppearance(mode, palette, userId) {
-  document.documentElement.dataset.theme = mode
-  document.documentElement.dataset.palette = palette
+  const nextMode = normalizeMode(mode)
+  const nextPalette = userId
+    ? isValidPalette(palette)
+      ? palette
+      : DEFAULT_PALETTE
+    : DEFAULT_PALETTE
+  document.documentElement.dataset.theme = nextMode
+  document.documentElement.dataset.palette = nextPalette
   try {
-    localStorage.setItem(THEME_MODE_KEY, mode)
-    localStorage.setItem(THEME_PALETTE_KEY, palette)
     if (userId) {
-      localStorage.setItem(themeModeKey(userId), mode)
-      localStorage.setItem(themePaletteKey(userId), palette)
+      localStorage.setItem(themeModeKey(userId), nextMode)
+      localStorage.setItem(themePaletteKey(userId), nextPalette)
+    } else {
+      // Public site defaults — never leave a portal colour on landing/sign-in.
+      localStorage.setItem(THEME_MODE_KEY, nextMode)
+      localStorage.setItem(THEME_PALETTE_KEY, DEFAULT_PALETTE)
     }
   } catch {
     /* ignore */
   }
+  return { mode: nextMode, palette: nextPalette }
 }
 
 function withViewTransition(fromEl, apply) {
@@ -107,43 +91,15 @@ function withViewTransition(fromEl, apply) {
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setThemeState] = useState(readMode)
-  const [palette, setPaletteState] = useState(readPalette)
+  // Public default until a user session hydrates portal prefs.
+  const [theme, setThemeState] = useState(DEFAULT_MODE)
+  const [palette, setPaletteState] = useState(DEFAULT_PALETTE)
   const userIdRef = useRef(null)
   const persistTimer = useRef(null)
 
   useEffect(() => {
     applyAppearance(theme, palette, userIdRef.current)
   }, [theme, palette])
-
-  useEffect(() => {
-    let mq
-    try {
-      mq = matchMedia('(prefers-color-scheme: dark)')
-    } catch {
-      return undefined
-    }
-    const onChange = (e) => {
-      if (userIdRef.current) return
-      let saved = null
-      try {
-        saved = localStorage.getItem(THEME_MODE_KEY)
-      } catch {
-        /* ignore */
-      }
-      if (!saved) {
-        const next = e.matches ? 'dark' : 'light'
-        document.documentElement.dataset.theme = next
-        setThemeState(next)
-      }
-    }
-    try {
-      mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
-    } catch {
-      return undefined
-    }
-  }, [])
 
   const persistAppearance = useCallback((mode, pal) => {
     if (!userIdRef.current) return
@@ -165,22 +121,29 @@ export function ThemeProvider({ children }) {
 
   const clearUserAppearance = useCallback(() => {
     userIdRef.current = null
+    applyAppearance(DEFAULT_MODE, DEFAULT_PALETTE, null)
+    setThemeState(DEFAULT_MODE)
+    setPaletteState(DEFAULT_PALETTE)
   }, [])
 
   const setTheme = useCallback(
     (t, fromEl) => {
       const next = normalizeMode(t)
+      const uid = userIdRef.current
       withViewTransition(fromEl, () => {
-        applyAppearance(next, palette, userIdRef.current)
-        setThemeState(next)
+        const applied = applyAppearance(next, palette, uid)
+        setThemeState(applied.mode)
+        setPaletteState(applied.palette)
       })
-      persistAppearance(next, palette)
+      if (uid) persistAppearance(next, isValidPalette(palette) ? palette : DEFAULT_PALETTE)
     },
     [palette, persistAppearance],
   )
 
   const setPalette = useCallback(
     (id, fromEl) => {
+      // Colour palettes are portal-only (settings while signed in).
+      if (!userIdRef.current) return
       const next = isValidPalette(id) ? id : DEFAULT_PALETTE
       withViewTransition(fromEl, () => {
         applyAppearance(theme, next, userIdRef.current)

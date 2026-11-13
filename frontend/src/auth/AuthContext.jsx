@@ -151,6 +151,7 @@ export function AuthProvider({ children }) {
         if (!cancelled) {
           setUser(null)
           setScope(null)
+          clearUserAppearance()
           setLoading(false)
         }
         return
@@ -180,6 +181,7 @@ export function AuthProvider({ children }) {
           if (!cancelled) {
             setUser(null)
             setScope(null)
+            clearUserAppearance()
           }
         }
       } finally {
@@ -190,7 +192,7 @@ export function AuthProvider({ children }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [clearUserAppearance])
 
   useEffect(() => {
     function onFocusOrVisible() {
