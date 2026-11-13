@@ -9,6 +9,7 @@ import {
 } from 'react'
 import * as api from '../api'
 import { ApiError, clearToken, getToken, setToken } from '../api/client'
+import { useTheme } from '../hooks/useTheme'
 
 const AuthContext = createContext(null)
 
@@ -65,6 +66,7 @@ function maybeRedirectForRoleChange(oldRole, newRole) {
 }
 
 export function AuthProvider({ children }) {
+  const { hydrateFromUser, clearUserAppearance } = useTheme()
   const [user, setUser] = useState(null)
   const [scope, setScope] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -72,6 +74,10 @@ export function AuthProvider({ children }) {
   const [configLoading, setConfigLoading] = useState(true)
   const userRef = useRef(null)
   userRef.current = user
+
+  useEffect(() => {
+    if (user?.id) hydrateFromUser(user)
+  }, [user, hydrateFromUser])
 
   const refreshPublicConfig = useCallback(async () => {
     const cfg = await api.publicConfig()
@@ -85,6 +91,7 @@ export function AuthProvider({ children }) {
       setUser(null)
       setScope(null)
       saveUserSnapshot(null)
+      clearUserAppearance()
       return null
     }
     const prev = userRef.current
@@ -111,11 +118,12 @@ export function AuthProvider({ children }) {
         setUser(null)
         setScope(null)
         saveUserSnapshot(null)
+        clearUserAppearance()
         return null
       }
       throw err
     }
-  }, [])
+  }, [clearUserAppearance])
 
   useEffect(() => {
     let cancelled = false
@@ -239,7 +247,8 @@ export function AuthProvider({ children }) {
     saveUserSnapshot(null)
     setUser(null)
     setScope(null)
-  }, [])
+    clearUserAppearance()
+  }, [clearUserAppearance])
 
   const mustChangePassword =
     scope === 'change_password' || !!user?.must_change_password

@@ -69,9 +69,9 @@ const TEACHER_CLASS_TABS = [
 
 const STUDENT_CLASS_TABS = [
   { key: 'overview', label: 'Overview', tab: null },
+  { key: 'material', label: 'Material', tab: 'material' },
   { key: 'exams', label: 'Exams', tab: 'exams' },
   { key: 'results', label: 'Results', tab: 'results' },
-  { key: 'material', label: 'Material', tab: 'material' },
 ]
 
 /** Static sidebar blueprint per role (dynamic classes filled by buildNavSections). */
@@ -186,11 +186,6 @@ export function navBlueprint(role) {
   if (role === 'student') {
     return [
       {
-        id: 'study',
-        label: 'Study',
-        items: [{ page: 's-study', to: '/app/student/study', label: 'Study assistant' }],
-      },
-      {
         id: 'overview',
         label: 'Overview',
         items: [
@@ -206,6 +201,11 @@ export function navBlueprint(role) {
         dynamic: 'classes',
         classBase: '/app/student/classes',
         classTabs: STUDENT_CLASS_TABS,
+      },
+      {
+        id: 'study',
+        label: 'Study',
+        items: [{ page: 's-study', to: '/app/student/study', label: 'Study assistant' }],
       },
       {
         id: 'account',

@@ -14,7 +14,7 @@ export default function ThemePicker() {
       </div>
       <div className="panel-b" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <p className="small" style={{ margin: 0, color: 'var(--color-muted-foreground)' }}>
-          Pick a colour theme. Changes apply right away on this device.
+          Pick a colour theme for your account. It does not change other users&apos; portals.
         </p>
 
         <div>

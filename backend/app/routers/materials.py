@@ -3,7 +3,7 @@ from fastapi.responses import Response
 
 from app.core.deps import CurrentUser, get_current_user, require_role
 from app.core.ratelimit import check_llm_rate_limit
-from app.schemas.materials import MaterialOut, MaterialSummaryOut
+from app.schemas.materials import MaterialAliasUpdate, MaterialOut, MaterialSummaryOut
 from app.schemas.study_assistant import AskRequest, AskResponse
 from app.services import materials as material_service
 from app.services import study_assistant as study_assistant_service
@@ -71,6 +71,24 @@ async def preview_material(material_id: str, user: CurrentUser = Depends(get_cur
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{safe}"'},
     )
+
+
+@router.put("/api/materials/{material_id}/alias", response_model=MaterialSummaryOut)
+async def set_material_alias(
+    material_id: str,
+    payload: MaterialAliasUpdate,
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await material_service.set_material_alias(
+        user, material_id, payload.display_name
+    )
+
+
+@router.delete("/api/materials/{material_id}/alias", response_model=MaterialSummaryOut)
+async def clear_material_alias(
+    material_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    return await material_service.clear_material_alias(user, material_id)
 
 
 @router.delete("/api/materials/{material_id}", status_code=204)

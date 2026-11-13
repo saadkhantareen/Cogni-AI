@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.schemas.users import Role, UserStatus
@@ -25,6 +27,13 @@ class TokenUser(BaseModel):
     dept_name: str | None = None
     institution_name: str = ""
     current_term: str = ""
+    theme_mode: str = ""
+    theme_palette: str = ""
+
+
+class AppearanceUpdate(BaseModel):
+    theme_mode: Literal["light", "dark"] | None = None
+    theme_palette: str | None = None
 
 
 class LoginResponse(BaseModel):

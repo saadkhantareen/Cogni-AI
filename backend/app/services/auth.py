@@ -155,7 +155,47 @@ async def user_public_fields(user: dict, *, active_role: str | None = None) -> d
         "dept_name": dept_name,
         "institution_name": s.get("institution_name") or "",
         "current_term": s.get("current_term") or "",
+        "theme_mode": (user.get("theme_mode") or "").strip(),
+        "theme_palette": (user.get("theme_palette") or "").strip(),
     }
+
+
+_ALLOWED_PALETTES = {
+    "clay",
+    "violet",
+    "emerald",
+    "ocean",
+    "rose",
+    "slate",
+    "coral",
+    "indigo",
+}
+
+
+async def update_appearance(
+    user_id: str, *, theme_mode: str | None = None, theme_palette: str | None = None
+) -> dict:
+    db = get_db()
+    from app.core.db import oid
+
+    user = await db.users.find_one({"_id": oid(user_id)})
+    if user is None:
+        raise HTTPException(status_code=401, detail=GENERIC_LOGIN_ERROR)
+    patch: dict = {}
+    if theme_mode is not None:
+        mode = theme_mode.strip().lower()
+        if mode not in ("light", "dark"):
+            raise HTTPException(status_code=400, detail="theme_mode must be light or dark.")
+        patch["theme_mode"] = mode
+    if theme_palette is not None:
+        palette = theme_palette.strip().lower()
+        if palette not in _ALLOWED_PALETTES:
+            raise HTTPException(status_code=400, detail="Unknown theme palette.")
+        patch["theme_palette"] = palette
+    if patch:
+        await db.users.update_one({"_id": user["_id"]}, {"$set": patch})
+        user = {**user, **patch}
+    return user
 
 
 async def change_password(user_id: str, current_password: str, new_password: str) -> dict:

@@ -17,6 +17,7 @@ class MaterialOut(OutBase):
     class_id: str
     owner_id: str | None = None
     name: str
+    display_name: str = ""
     kind: Literal["pdf", "docx", "pptx", "text", "url"]
     text: str
     chunks: list[MaterialChunk] = Field(default_factory=list)
@@ -27,7 +28,12 @@ class MaterialSummaryOut(OutBase):
     class_id: str
     owner_id: str | None = None
     name: str
+    display_name: str = ""
     kind: Literal["pdf", "docx", "pptx", "text", "url"]
     chunk_count: int
     word_count: int
     created_at: datetime
+
+
+class MaterialAliasUpdate(BaseModel):
+    display_name: str = Field(..., min_length=1, max_length=200)

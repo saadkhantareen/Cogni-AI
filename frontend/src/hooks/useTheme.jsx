@@ -4,15 +4,21 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
+import * as api from '../api'
 import {
   DEFAULT_PALETTE,
   THEME_MODE_KEY,
   THEME_PALETTE_KEY,
   THEME_PALETTES,
   isValidPalette,
+  normalizeMode,
   paletteById,
+  resolveAppearanceForUser,
+  themeModeKey,
+  themePaletteKey,
 } from '../utils/themes'
 
 const ThemeContext = createContext(null)
@@ -48,12 +54,16 @@ function readPalette() {
   return DEFAULT_PALETTE
 }
 
-function applyAppearance(mode, palette) {
+function applyAppearance(mode, palette, userId) {
   document.documentElement.dataset.theme = mode
   document.documentElement.dataset.palette = palette
   try {
     localStorage.setItem(THEME_MODE_KEY, mode)
     localStorage.setItem(THEME_PALETTE_KEY, palette)
+    if (userId) {
+      localStorage.setItem(themeModeKey(userId), mode)
+      localStorage.setItem(themePaletteKey(userId), palette)
+    }
   } catch {
     /* ignore */
   }
@@ -99,9 +109,11 @@ function withViewTransition(fromEl, apply) {
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(readMode)
   const [palette, setPaletteState] = useState(readPalette)
+  const userIdRef = useRef(null)
+  const persistTimer = useRef(null)
 
   useEffect(() => {
-    applyAppearance(theme, palette)
+    applyAppearance(theme, palette, userIdRef.current)
   }, [theme, palette])
 
   useEffect(() => {
@@ -112,6 +124,7 @@ export function ThemeProvider({ children }) {
       return undefined
     }
     const onChange = (e) => {
+      if (userIdRef.current) return
       let saved = null
       try {
         saved = localStorage.getItem(THEME_MODE_KEY)
@@ -132,26 +145,50 @@ export function ThemeProvider({ children }) {
     }
   }, [])
 
+  const persistAppearance = useCallback((mode, pal) => {
+    if (!userIdRef.current) return
+    clearTimeout(persistTimer.current)
+    persistTimer.current = setTimeout(() => {
+      api.putAppearance({ theme_mode: mode, theme_palette: pal }).catch(() => {})
+    }, 250)
+  }, [])
+
+  const hydrateFromUser = useCallback((user) => {
+    const uid = user?.id || null
+    userIdRef.current = uid
+    if (!uid) return
+    const { mode, palette: nextPalette } = resolveAppearanceForUser(user)
+    applyAppearance(mode, nextPalette, uid)
+    setThemeState(mode)
+    setPaletteState(nextPalette)
+  }, [])
+
+  const clearUserAppearance = useCallback(() => {
+    userIdRef.current = null
+  }, [])
+
   const setTheme = useCallback(
     (t, fromEl) => {
-      const next = t === 'dark' ? 'dark' : 'light'
+      const next = normalizeMode(t)
       withViewTransition(fromEl, () => {
-        applyAppearance(next, palette)
+        applyAppearance(next, palette, userIdRef.current)
         setThemeState(next)
       })
+      persistAppearance(next, palette)
     },
-    [palette],
+    [palette, persistAppearance],
   )
 
   const setPalette = useCallback(
     (id, fromEl) => {
       const next = isValidPalette(id) ? id : DEFAULT_PALETTE
       withViewTransition(fromEl, () => {
-        applyAppearance(theme, next)
+        applyAppearance(theme, next, userIdRef.current)
         setPaletteState(next)
       })
+      persistAppearance(theme, next)
     },
-    [theme],
+    [theme, persistAppearance],
   )
 
   const toggleTheme = useCallback(
@@ -171,8 +208,18 @@ export function ThemeProvider({ children }) {
       setPalette,
       palettes: THEME_PALETTES,
       paletteMeta: paletteById(palette),
+      hydrateFromUser,
+      clearUserAppearance,
     }),
-    [theme, setTheme, toggleTheme, palette, setPalette],
+    [
+      theme,
+      setTheme,
+      toggleTheme,
+      palette,
+      setPalette,
+      hydrateFromUser,
+      clearUserAppearance,
+    ],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

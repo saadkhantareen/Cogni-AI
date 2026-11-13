@@ -7,6 +7,15 @@ export const THEME_MODE_KEY = 'cogni-theme'
 export const THEME_PALETTE_KEY = 'cogni-palette'
 
 export const DEFAULT_PALETTE = 'clay'
+export const DEFAULT_MODE = 'light'
+
+export function themeModeKey(userId) {
+  return userId ? `${THEME_MODE_KEY}:${userId}` : THEME_MODE_KEY
+}
+
+export function themePaletteKey(userId) {
+  return userId ? `${THEME_PALETTE_KEY}:${userId}` : THEME_PALETTE_KEY
+}
 
 /** @typedef {{ id: string, name: string, blurb: string, swatches: [string, string, string] }} ThemePalette */
 
@@ -70,4 +79,29 @@ export function isValidPalette(id) {
 
 export function paletteById(id) {
   return THEME_PALETTES.find((p) => p.id === id) || THEME_PALETTES[0]
+}
+
+export function normalizeMode(mode) {
+  return mode === 'dark' ? 'dark' : 'light'
+}
+
+/** Resolve mode/palette for a logged-in user (account prefs → per-user local → defaults). */
+export function resolveAppearanceForUser(user) {
+  let mode = normalizeMode(user?.theme_mode)
+  let palette = isValidPalette(user?.theme_palette) ? user.theme_palette : null
+  const uid = user?.id
+  try {
+    if (!user?.theme_mode) {
+      const saved = localStorage.getItem(themeModeKey(uid)) || localStorage.getItem(THEME_MODE_KEY)
+      if (saved === 'light' || saved === 'dark') mode = saved
+    }
+    if (!palette) {
+      const saved =
+        localStorage.getItem(themePaletteKey(uid)) || localStorage.getItem(THEME_PALETTE_KEY)
+      if (isValidPalette(saved)) palette = saved
+    }
+  } catch {
+    /* ignore */
+  }
+  return { mode, palette: palette || DEFAULT_PALETTE }
 }

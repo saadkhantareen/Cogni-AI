@@ -19,6 +19,8 @@ class UserOut(OutBase):
     dept_name: str | None = None
     institution_name: str = ""
     current_term: str = ""
+    theme_mode: str = ""
+    theme_palette: str = ""
 
 
 class UserCreate(BaseModel):

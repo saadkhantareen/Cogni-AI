@@ -1,6 +1,6 @@
 /* Ported verbatim from reference/Cogni.ai-v7.html <style> — base / reset */
 *{box-sizing:border-box}
-html{scroll-padding-top:calc(var(--topbar-h) + 12px)}
+html{scroll-padding-top:calc(var(--topbar-h) + 12px);accent-color:var(--color-primary)}
 html,body{background:var(--color-background)}
 body{overflow-x:clip}
 body{margin:0;color:var(--color-foreground);font-family:var(--font);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom,0px);max-width:100vw}
@@ -10,11 +10,19 @@ h1,h2,h3,h4{font-family:var(--font-display);margin:0;text-wrap:balance;letter-sp
 p{text-wrap:pretty}
 button{font:inherit;cursor:pointer;color:inherit}
 button:disabled{cursor:not-allowed}
-input,textarea,select{font:inherit;color:var(--color-foreground)}
+input,textarea,select{font:inherit;color:var(--color-foreground);accent-color:var(--color-primary)}
 a{color:var(--color-ring);text-underline-offset:3px}
 a:hover{color:var(--color-foreground)}
 :focus-visible{outline:3px solid var(--color-primary);outline-offset:2px;border-radius:4px}
 ::selection{background:color-mix(in srgb,var(--color-primary) 45%,transparent)}
+option:checked,option:hover{
+  background:color-mix(in srgb,var(--color-primary) 88%,#000) !important;
+  color:var(--color-on-primary, #171719) !important;
+}
+select option:checked{
+  background:var(--color-primary) linear-gradient(0deg,var(--color-primary) 0%,var(--color-primary) 100%);
+  color:var(--color-on-primary, #171719);
+}
 .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .skip{position:absolute;left:12px;top:-60px;z-index:200;background:var(--color-primary);color:var(--color-on-primary);padding:10px 14px;border-radius:var(--radius-sm);font-weight:600;transition:top var(--t) var(--ease-out)}
 .skip:focus{top:12px;color:var(--color-on-primary)}

@@ -38,6 +38,10 @@ export function getMe() {
   return get('/auth/me')
 }
 
+export function putAppearance(body) {
+  return put('/auth/appearance', body)
+}
+
 export function publicConfig() {
   return get('/public/config', { skipAuth: true })
 }
@@ -185,6 +189,14 @@ export function deleteMaterial(id) {
   return del(`/materials/${id}`)
 }
 
+export function putMaterialAlias(id, displayName) {
+  return put(`/materials/${id}/alias`, { display_name: displayName })
+}
+
+export function deleteMaterialAlias(id) {
+  return del(`/materials/${id}/alias`)
+}
+
 export function askMaterial(id, question) {
   return post(`/materials/${id}/ask`, { question })
 }
@@ -224,7 +236,12 @@ async function fetchAuthorizedBlob(apiPath, fallbackName) {
     }
     throw new ApiError(res.status, 'ERROR', message)
   }
-  const blob = await res.blob()
+  const raw = await res.blob()
+  // Chrome's built-in PDF viewer needs application/pdf; some proxies return octet-stream.
+  const blob =
+    raw.type === 'application/pdf'
+      ? raw
+      : new Blob([raw], { type: 'application/pdf' })
   let filename = fallbackName
   const cd = res.headers.get('Content-Disposition') || ''
   const m = /filename="?([^";]+)"?/i.exec(cd)

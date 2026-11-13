@@ -50,14 +50,43 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
-def _material_summary(doc: dict) -> dict:
+def _material_summary(doc: dict, *, display_name: str | None = None) -> dict:
     out = to_out(doc)
     out["chunk_count"] = len(doc.get("chunks", []))
     out["word_count"] = _word_count(doc.get("text", ""))
+    original = str(out.get("name") or "")
+    out["display_name"] = (display_name or "").strip() or original
     out.pop("text", None)
     out.pop("chunks", None)
     out.pop("file_id", None)
     return out
+
+
+async def _aliases_for_user(user_id: str, material_ids: list[str]) -> dict[str, str]:
+    if not material_ids:
+        return {}
+    db = get_db()
+    cursor = db.material_aliases.find(
+        {"user_id": user_id, "material_id": {"$in": material_ids}}
+    )
+    out: dict[str, str] = {}
+    async for row in cursor:
+        name = str(row.get("display_name") or "").strip()
+        mid = str(row.get("material_id") or "")
+        if mid and name:
+            out[mid] = name
+    return out
+
+
+async def _alias_for_user(user_id: str, material_id: str) -> str | None:
+    db = get_db()
+    row = await db.material_aliases.find_one(
+        {"user_id": user_id, "material_id": material_id}
+    )
+    if not row:
+        return None
+    name = str(row.get("display_name") or "").strip()
+    return name or None
 
 
 async def _delete_same_name_materials(cls: dict, name: str) -> int:
@@ -70,7 +99,9 @@ async def _delete_same_name_materials(cls: dict, name: str) -> int:
     async for doc in cursor:
         if str(doc.get("name") or "").strip().lower() == target:
             file_id = doc.get("file_id")
+            mid = str(doc["_id"])
             await db.materials.delete_one({"_id": doc["_id"]})
+            await db.material_aliases.delete_many({"material_id": mid})
             if file_id:
                 from app.services.material_files import delete_material_file
 
@@ -195,8 +226,12 @@ async def list_materials(user: CurrentUser, class_id: str) -> list[dict]:
     cls = await _get_class_or_404(class_id)
     _assert_read_access(user, cls)
     db = get_db()
-    cursor = db.materials.find({"class_id": class_id}).sort("created_at", -1)
-    return [_material_summary(m) async for m in cursor]
+    docs = [m async for m in db.materials.find({"class_id": class_id}).sort("created_at", -1)]
+    aliases = await _aliases_for_user(user.id, [str(m["_id"]) for m in docs])
+    return [
+        _material_summary(m, display_name=aliases.get(str(m["_id"])))
+        for m in docs
+    ]
 
 
 async def _get_material_or_404(material_id: str) -> dict:
@@ -211,7 +246,50 @@ async def get_material(user: CurrentUser, material_id: str) -> dict:
     doc = await _get_material_or_404(material_id)
     cls = await _get_class_or_404(doc["class_id"])
     _assert_read_access(user, cls)
-    return to_out(doc)
+    out = to_out(doc)
+    alias = await _alias_for_user(user.id, material_id)
+    original = str(out.get("name") or "")
+    out["display_name"] = alias or original
+    return out
+
+
+async def set_material_alias(
+    user: CurrentUser, material_id: str, display_name: str
+) -> dict:
+    doc = await _get_material_or_404(material_id)
+    cls = await _get_class_or_404(doc["class_id"])
+    _assert_read_access(user, cls)
+    name = (display_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Display name is required.")
+    if len(name) > 200:
+        raise HTTPException(status_code=400, detail="Display name is too long.")
+    db = get_db()
+    now = datetime.now(UTC)
+    await db.material_aliases.update_one(
+        {"user_id": user.id, "material_id": material_id},
+        {
+            "$set": {
+                "user_id": user.id,
+                "material_id": material_id,
+                "display_name": name,
+                "updated_at": now,
+            }
+        },
+        upsert=True,
+    )
+    return _material_summary(doc, display_name=name)
+
+
+async def clear_material_alias(user: CurrentUser, material_id: str) -> dict:
+    doc = await _get_material_or_404(material_id)
+    cls = await _get_class_or_404(doc["class_id"])
+    _assert_read_access(user, cls)
+    db = get_db()
+    await db.material_aliases.delete_one(
+        {"user_id": user.id, "material_id": material_id}
+    )
+    return _material_summary(doc)
 
 
 async def delete_material(actor: CurrentUser, material_id: str) -> None:
@@ -229,7 +307,9 @@ async def delete_material(actor: CurrentUser, material_id: str) -> None:
             detail="This material is used by a non-draft exam and cannot be deleted.",
         )
     file_id = doc.get("file_id")
+    material_id = str(doc["_id"])
     await db.materials.delete_one({"_id": doc["_id"]})
+    await db.material_aliases.delete_many({"material_id": material_id})
     if file_id:
         from app.services.material_files import delete_material_file
 

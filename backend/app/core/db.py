@@ -54,6 +54,9 @@ async def create_indexes() -> None:
     await db.settings.create_index(
         [("singleton", ASCENDING)], unique=True, partialFilterExpression={"singleton": True}
     )
+    await db.material_aliases.create_index(
+        [("user_id", ASCENDING), ("material_id", ASCENDING)], unique=True
+    )
 
 
 @asynccontextmanager

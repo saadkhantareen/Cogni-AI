@@ -244,6 +244,7 @@ export default function Departments() {
                     </label>
                     <select
                       id={`d-hod-${d.id}`}
+                      className="inp"
                       value={d.hod_id || ''}
                       disabled={busy === `hod-${d.id}`}
                       aria-label={`Assign HOD for ${d.name}`}

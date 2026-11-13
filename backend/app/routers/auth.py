@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.core.deps import CurrentUser, get_current_user
 from app.core.ratelimit import check_login_rate_limit
 from app.schemas.auth import (
+    AppearanceUpdate,
     ChangePasswordRequest,
     ForgotRequest,
     LoginRequest,
@@ -70,6 +71,25 @@ async def me(current: CurrentUser = Depends(get_current_user)):
 
     doc = await get_db().users.find_one({"_id": oid(current.id)})
     fields = await auth_service.user_public_fields(doc, active_role=current.role)
+    return UserOut(**fields)
+
+
+@router.put("/appearance", response_model=UserOut)
+async def update_appearance(
+    payload: AppearanceUpdate, current: CurrentUser = Depends(get_current_user)
+):
+    if current.scope == "change_password":
+        raise HTTPException(
+            status_code=403, detail="Change your password before continuing."
+        )
+    if payload.theme_mode is None and payload.theme_palette is None:
+        raise HTTPException(status_code=400, detail="Nothing to update.")
+    user = await auth_service.update_appearance(
+        current.id,
+        theme_mode=payload.theme_mode,
+        theme_palette=payload.theme_palette,
+    )
+    fields = await auth_service.user_public_fields(user, active_role=current.role)
     return UserOut(**fields)
 
 

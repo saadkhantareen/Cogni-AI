@@ -10,6 +10,7 @@ import Panel from '../../components/Panel'
 import PipelineSteps from '../../components/PipelineSteps'
 import Tabs from '../../components/Tabs'
 import { useConfirm } from '../../components/ConfirmModal'
+import { useModal } from '../../components/Modal'
 import PdfViewer from '../../components/PdfViewer'
 import { useToast } from '../../components/Toast'
 import { formatShortDate } from '../../utils/format'
@@ -27,9 +28,23 @@ import {
  * Course material page (v7 t-materials).
  * When `embedded` + `classId`, renders without page top (class tab).
  */
+function materialLabel(m) {
+  return (m?.display_name || m?.name || 'Material').trim() || 'Material'
+}
+
+function splitNameExt(name) {
+  const raw = String(name || '').trim()
+  const i = raw.lastIndexOf('.')
+  if (i > 0 && i < raw.length - 1 && raw.length - i <= 6) {
+    return { base: raw.slice(0, i), ext: raw.slice(i) }
+  }
+  return { base: raw, ext: '' }
+}
+
 export default function Materials({ embedded = false, classId: fixedClassId } = {}) {
   const toast = useToast()
   const confirm = useConfirm()
+  const { openModal, closeModal } = useModal()
   const fileRef = useRef(null)
 
   const [classes, setClasses] = useState([])
@@ -300,7 +315,12 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
       const url = URL.createObjectURL(blob)
       setViewer((current) => {
         if (current?.url) URL.revokeObjectURL(current.url)
-        return { title: m.name, url, filename }
+        return {
+          title: materialLabel(m),
+          subtitle: m.name && materialLabel(m) !== m.name ? `Original: ${m.name}` : null,
+          url,
+          filename,
+        }
       })
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not open this document.', { type: 'error' })
@@ -309,9 +329,71 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
     }
   }
 
+  function onRename(m) {
+    const current = materialLabel(m)
+    const { base, ext } = splitNameExt(current)
+    let nextBase = base
+    openModal(
+      <>
+        <h3>Rename for you</h3>
+        <p className="small" style={{ marginTop: -4 }}>
+          Only you see this name. Other users still see the original file name.
+        </p>
+        <Field id={`rename-cur-${m.id}`} label="Current name">
+          <input id={`rename-cur-${m.id}`} value={m.name || current} readOnly disabled />
+        </Field>
+        <Field id={`rename-new-${m.id}`} label="New name" hint={ext ? `Extension ${ext} stays attached.` : null}>
+          <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+            <input
+              id={`rename-new-${m.id}`}
+              className="inp"
+              defaultValue={base}
+              autoFocus
+              onChange={(e) => {
+                nextBase = e.target.value
+              }}
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            {ext ? <span className="small" style={{ flexShrink: 0 }}>{ext}</span> : null}
+          </div>
+        </Field>
+        <div className="acts">
+          <button type="button" className="btn" onClick={closeModal}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={async () => {
+              const name = `${(nextBase || '').trim()}${ext}`.trim()
+              if (!name) {
+                toast('Enter a name.', { type: 'error' })
+                return
+              }
+              try {
+                const updated = await api.putMaterialAlias(m.id, name)
+                setMaterials((list) =>
+                  list.map((row) => (row.id === m.id ? { ...row, ...updated } : row)),
+                )
+                toast('Name updated for you')
+                closeModal()
+              } catch (err) {
+                toast(err instanceof ApiError ? err.message : 'Could not rename.', {
+                  type: 'error',
+                })
+              }
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </>,
+    )
+  }
+
   async function onDelete(m) {
     const ok = await confirm({
-      title: `Delete ${m.name}?`,
+      title: `Delete ${materialLabel(m)}?`,
       body: 'Students lose access to it in the study assistant. Exams made from it stay.',
       ok: 'Delete file',
       tone: 'bad',
@@ -590,8 +672,23 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
               {materials.length ? (
                 materials.map((m) => (
                   <tr key={m.id}>
-                    <td>
-                      <b>{m.name}</b>
+                    <td style={{ maxWidth: 280 }}>
+                      <b
+                        style={{
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={materialLabel(m)}
+                      >
+                        {materialLabel(m)}
+                      </b>
+                      {m.display_name && m.name && m.display_name !== m.name ? (
+                        <div className="small" title={m.name}>
+                          Original: {m.name}
+                        </div>
+                      ) : null}
                     </td>
                     {!fixedClassId ? (
                       <td>{classById.get(m.class_id)?.code || '—'}</td>
@@ -601,21 +698,29 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
                     <td className="num">{m.chunk_count ?? '—'}</td>
                     <td>{formatShortDate(m.created_at)}</td>
                     <td>
-                      <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+                      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
                         <button
                           type="button"
                           className="btn small"
                           onClick={() => onView(m)}
                           disabled={viewBusyId === m.id}
-                          aria-label={`View ${m.name}`}
+                          aria-label={`View ${materialLabel(m)}`}
                         >
                           {viewBusyId === m.id ? 'Opening…' : 'View'}
                         </button>
                         <button
                           type="button"
+                          className="btn small"
+                          onClick={() => onRename(m)}
+                          aria-label={`Rename ${materialLabel(m)}`}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
                           className="btn small bad"
                           onClick={() => onDelete(m)}
-                          aria-label={`Delete ${m.name}`}
+                          aria-label={`Delete ${materialLabel(m)}`}
                         >
                           Delete…
                         </button>
@@ -637,6 +742,7 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
       {viewer ? (
         <PdfViewer
           title={viewer.title}
+          subtitle={viewer.subtitle}
           url={viewer.url}
           onClose={closeViewer}
           onDownload={() => {

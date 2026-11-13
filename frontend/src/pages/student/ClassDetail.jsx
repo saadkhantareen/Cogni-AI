@@ -5,7 +5,9 @@ import { ApiError } from '../../api/client'
 import { windowState } from '../../utils/pkTime'
 import { ShellError, ShellLoading } from '../../components/AppShell'
 import EmptyState from '../../components/EmptyState'
+import Field from '../../components/Field'
 import { useModal } from '../../components/Modal'
+import PdfViewer from '../../components/PdfViewer'
 import { useToast } from '../../components/Toast'
 import {
   attemptPercent,
@@ -17,44 +19,52 @@ import {
 import Exams from './Exams'
 import Results from './Results'
 
-function StudentMaterials({ materials }) {
+function materialLabel(m) {
+  return (m?.display_name || m?.name || 'Material').trim() || 'Material'
+}
+
+function splitNameExt(name) {
+  const raw = String(name || '').trim()
+  const i = raw.lastIndexOf('.')
+  if (i > 0 && i < raw.length - 1 && raw.length - i <= 6) {
+    return { base: raw.slice(0, i), ext: raw.slice(i) }
+  }
+  return { base: raw, ext: '' }
+}
+
+function StudentMaterials({ materials, onMaterialsChange }) {
   const toast = useToast()
   const { openModal, closeModal } = useModal()
   const [openingId, setOpeningId] = useState(null)
+  const [viewer, setViewer] = useState(null)
+  const list = materials || []
+
+  function closeViewer() {
+    setViewer((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url)
+      return null
+    })
+  }
 
   async function openDoc(m) {
     setOpeningId(m.id)
     try {
-      const doc = await api.getMaterial(m.id)
-      const text = (doc?.text || '').trim()
-      openModal(
-        <>
-          <h3>{doc?.name || m.name}</h3>
-          <p className="small" style={{ marginTop: -4 }}>
-            {materialKindLabel(doc?.kind || m.kind)}
-            {doc?.chunks?.length ? ` · ${doc.chunks.length} sections` : ''}
-          </p>
-          {text ? (
-            <div className="doc-view" tabIndex={0}>
-              {text}
-            </div>
-          ) : (
-            <EmptyState panel={false}>No text extracted for this file yet.</EmptyState>
-          )}
-          <div className="acts">
-            <button type="button" className="btn" onClick={closeModal}>
-              Close
-            </button>
-            <Link
-              className="btn primary"
-              to={`/app/student/study?doc=${encodeURIComponent(m.id)}`}
-              onClick={closeModal}
-            >
-              Ask the assistant
-            </Link>
-          </div>
-        </>,
-      )
+      const { blob, filename } = await api.fetchMaterialPreview(m.id)
+      const url = URL.createObjectURL(blob)
+      setViewer((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url)
+        return {
+          title: materialLabel(m),
+          subtitle: [
+            materialKindLabel(m.kind),
+            m.name && materialLabel(m) !== m.name ? `Original: ${m.name}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          url,
+          filename,
+        }
+      })
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not open this document.', {
         type: 'error',
@@ -64,37 +74,133 @@ function StudentMaterials({ materials }) {
     }
   }
 
-  if (!materials.length) {
+  function onRename(m) {
+    const current = materialLabel(m)
+    const { base, ext } = splitNameExt(current)
+    let nextBase = base
+    openModal(
+      <>
+        <h3>Rename for you</h3>
+        <p className="small" style={{ marginTop: -4 }}>
+          Only you see this name. Other users still see the original file name.
+        </p>
+        <Field id={`s-rename-cur-${m.id}`} label="Current name">
+          <input id={`s-rename-cur-${m.id}`} value={m.name || current} readOnly disabled />
+        </Field>
+        <Field
+          id={`s-rename-new-${m.id}`}
+          label="New name"
+          hint={ext ? `Extension ${ext} stays attached.` : null}
+        >
+          <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}>
+            <input
+              id={`s-rename-new-${m.id}`}
+              className="inp"
+              defaultValue={base}
+              autoFocus
+              onChange={(e) => {
+                nextBase = e.target.value
+              }}
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            {ext ? (
+              <span className="small" style={{ flexShrink: 0 }}>
+                {ext}
+              </span>
+            ) : null}
+          </div>
+        </Field>
+        <div className="acts">
+          <button type="button" className="btn" onClick={closeModal}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={async () => {
+              const name = `${(nextBase || '').trim()}${ext}`.trim()
+              if (!name) {
+                toast('Enter a name.', { type: 'error' })
+                return
+              }
+              try {
+                const updated = await api.putMaterialAlias(m.id, name)
+                onMaterialsChange?.(
+                  list.map((row) => (row.id === m.id ? { ...row, ...updated } : row)),
+                )
+                toast('Name updated for you')
+                closeModal()
+              } catch (err) {
+                toast(err instanceof ApiError ? err.message : 'Could not rename.', {
+                  type: 'error',
+                })
+              }
+            }}
+          >
+            Save
+          </button>
+        </div>
+      </>,
+    )
+  }
+
+  if (!list.length) {
     return <EmptyState>No material yet</EmptyState>
   }
 
   return (
-    <div className="panel">
-      {materials.map((m) => (
-        <div className="lrow" key={m.id}>
-          <div className="grow">
-            <b>{m.name}</b>
-            <div className="small">
-              {materialKindLabel(m.kind)}
-              {m.created_at
-                ? ` · added ${formatSubmittedAt(m.created_at).split(',')[0] || ''}`
-                : ''}
+    <>
+      <div className="panel">
+        {list.map((m) => (
+          <div className="lrow" key={m.id}>
+            <div className="grow">
+              <b title={materialLabel(m)}>{materialLabel(m)}</b>
+              <div className="small">
+                {materialKindLabel(m.kind)}
+                {m.created_at
+                  ? ` · added ${formatSubmittedAt(m.created_at).split(',')[0] || ''}`
+                  : ''}
+              </div>
+            </div>
+            <div className="lrow-actions">
+              <button
+                type="button"
+                className={`btn small${openingId === m.id ? ' busy' : ''}`}
+                disabled={openingId === m.id}
+                onClick={() => openDoc(m)}
+              >
+                {openingId === m.id ? 'Opening…' : 'View'}
+              </button>
+              <button type="button" className="btn small" onClick={() => onRename(m)}>
+                Rename
+              </button>
+              <Link
+                className="btn small"
+                to={`/app/student/study?doc=${encodeURIComponent(m.id)}`}
+              >
+                Ask the assistant
+              </Link>
             </div>
           </div>
-          <button
-            type="button"
-            className={`btn small${openingId === m.id ? ' busy' : ''}`}
-            disabled={openingId === m.id}
-            onClick={() => openDoc(m)}
-          >
-            Open
-          </button>
-          <Link className="btn small" to={`/app/student/study?doc=${encodeURIComponent(m.id)}`}>
-            Ask the assistant
-          </Link>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      {viewer ? (
+        <PdfViewer
+          title={viewer.title}
+          subtitle={viewer.subtitle}
+          url={viewer.url}
+          onClose={closeViewer}
+          onDownload={() => {
+            const a = document.createElement('a')
+            a.href = viewer.url
+            a.download = viewer.filename || 'material.pdf'
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+          }}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -200,6 +306,21 @@ export default function ClassDetail() {
           <article
             className="scard"
             tabIndex={0}
+            onClick={() => setTab('material')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setTab('material')
+              }
+            }}
+          >
+            <h3>Material</h3>
+            <b className="scard-n">{materials.length}</b>
+            <p className="small">View files or ask the study assistant</p>
+          </article>
+          <article
+            className="scard"
+            tabIndex={0}
             onClick={() => setTab('exams')}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -247,21 +368,6 @@ export default function ClassDetail() {
                 : 'Released after your teacher reviews answers'}
             </p>
           </article>
-          <article
-            className="scard"
-            tabIndex={0}
-            onClick={() => setTab('material')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                setTab('material')
-              }
-            }}
-          >
-            <h3>Material</h3>
-            <b className="scard-n">{materials.length}</b>
-            <p className="small">Ask the study assistant about any file</p>
-          </article>
         </div>
         <section className="dzone" aria-labelledby="dz-h">
           <div>
@@ -288,7 +394,7 @@ export default function ClassDetail() {
   } else if (tab === 'results') {
     body = <Results classId={id} />
   } else if (tab === 'material') {
-    body = <StudentMaterials materials={materials} />
+    body = <StudentMaterials materials={materials} onMaterialsChange={setMaterials} />
   }
 
   return (
