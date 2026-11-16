@@ -15,7 +15,9 @@ Email verification tokens: `email_verifications` — `token_hash` (unique), `use
 `id, code, name, teacher_id, dept_id, student_ids[], join_code (unique), clos[], section`
 
 ## materials
-`id, class_id, owner_id|null, name, kind (pdf|text), text, chunks[{idx,page|null,heading|null,text}], created_at`
+`id, class_id, owner_id|null, name, kind (pdf|docx|pptx|text|url), text, chunks[{idx,page|null,heading|null,text}], created_at, file_id|null, file_storage (cloudinary|gridfs)|null, file_url|null, content_type|null`
+
+Original PDF/DOCX/PPTX bytes live in Cloudinary (raw) when `CLOUDINARY_*` is set, otherwise Mongo GridFS. Extracted `text`/`chunks` stay in Mongo for exams and the study assistant. Pasted notes and URL imports have no `file_id`.
 
 ## exams
 `id, title, class_id, teacher_id, kind (Quiz|Midterm|Final), duration_min, status (draft|pending|returned|approved|published|closed), questions[], ai_threshold, released, hod_comment, request_id|null, material_ids[], history[{at,by,text}], created_at`

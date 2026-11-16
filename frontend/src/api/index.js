@@ -214,7 +214,7 @@ export function getExam(id) {
   return get(`/exams/${id}`)
 }
 
-async function fetchAuthorizedBlob(apiPath, fallbackName) {
+async function fetchAuthorizedBlob(apiPath, fallbackName, { asPdf = true } = {}) {
   const API_BASE = String(import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
   const url = API_BASE ? `${API_BASE}${apiPath}` : apiPath
   const headers = new Headers()
@@ -227,7 +227,7 @@ async function fetchAuthorizedBlob(apiPath, fallbackName) {
     throw new ApiError(0, 'NETWORK_ERROR', 'Network error. Check your connection and try again.')
   }
   if (!res.ok) {
-    let message = 'Could not open the PDF.'
+    let message = asPdf ? 'Could not open the PDF.' : 'Could not open this file.'
     try {
       const body = await res.json()
       if (typeof body?.detail === 'string') message = body.detail
@@ -237,16 +237,19 @@ async function fetchAuthorizedBlob(apiPath, fallbackName) {
     throw new ApiError(res.status, 'ERROR', message)
   }
   const raw = await res.blob()
-  // Chrome's built-in PDF viewer needs application/pdf; some proxies return octet-stream.
-  const blob =
-    raw.type === 'application/pdf'
-      ? raw
-      : new Blob([raw], { type: 'application/pdf' })
+  let blob = raw
+  if (asPdf) {
+    // Chrome's built-in PDF viewer needs application/pdf; some proxies return octet-stream.
+    blob = raw.type === 'application/pdf' ? raw : new Blob([raw], { type: 'application/pdf' })
+  } else if (!raw.type || raw.type === 'application/octet-stream') {
+    const headerType = res.headers.get('Content-Type')
+    if (headerType) blob = new Blob([raw], { type: headerType.split(';')[0].trim() })
+  }
   let filename = fallbackName
   const cd = res.headers.get('Content-Disposition') || ''
   const m = /filename="?([^";]+)"?/i.exec(cd)
   if (m) filename = m[1]
-  return { blob, filename }
+  return { blob, filename, contentType: blob.type || res.headers.get('Content-Type') || '' }
 }
 
 function saveBlob(blob, filename) {
@@ -274,6 +277,11 @@ export function fetchExamPdf(id) {
 /** Uploaded material as a PDF (original PDF, or a text preview for other kinds). */
 export function fetchMaterialPreview(id) {
   return fetchAuthorizedBlob(`/api/materials/${id}/preview`, 'material.pdf')
+}
+
+/** Original upload bytes with the real extension (pdf / docx / pptx). */
+export function fetchMaterialFile(id, fallbackName = 'material') {
+  return fetchAuthorizedBlob(`/api/materials/${id}/file`, fallbackName, { asPdf: false })
 }
 
 export function patchExam(id, body) {

@@ -11,6 +11,7 @@ import PipelineSteps from '../../components/PipelineSteps'
 import Tabs from '../../components/Tabs'
 import { useConfirm } from '../../components/ConfirmModal'
 import { useModal } from '../../components/Modal'
+import FileAttachmentViewer from '../../components/FileAttachmentViewer'
 import PdfViewer from '../../components/PdfViewer'
 import { useToast } from '../../components/Toast'
 import { formatShortDate } from '../../utils/format'
@@ -311,13 +312,25 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
   async function onView(m) {
     setViewBusyId(m.id)
     try {
-      const { blob, filename } = await api.fetchMaterialPreview(m.id)
+      const label = materialLabel(m)
+      const kind = m.kind || 'pdf'
+      const useOriginal = Boolean(m.has_file) && ['pdf', 'docx', 'pptx'].includes(kind)
+      const { blob, filename } = useOriginal
+        ? await api.fetchMaterialFile(m.id, m.name || label)
+        : await api.fetchMaterialPreview(m.id)
       const url = URL.createObjectURL(blob)
       setViewer((current) => {
         if (current?.url) URL.revokeObjectURL(current.url)
         return {
-          title: materialLabel(m),
-          subtitle: m.name && materialLabel(m) !== m.name ? `Original: ${m.name}` : null,
+          mode: useOriginal && kind !== 'pdf' ? 'file' : 'pdf',
+          kind,
+          title: label,
+          subtitle: [
+            kindLabel(kind),
+            m.name && label !== m.name ? `Original: ${m.name}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
           url,
           filename,
         }
@@ -739,7 +752,24 @@ export default function Materials({ embedded = false, classId: fixedClassId } = 
           </table>
         </div>
       </div>
-      {viewer ? (
+      {viewer?.mode === 'file' ? (
+        <FileAttachmentViewer
+          title={viewer.title}
+          subtitle={viewer.subtitle}
+          filename={viewer.filename}
+          kindLabel={kindLabel(viewer.kind)}
+          url={viewer.url}
+          onClose={closeViewer}
+          onDownload={() => {
+            const a = document.createElement('a')
+            a.href = viewer.url
+            a.download = viewer.filename || 'material'
+            document.body.appendChild(a)
+            a.click()
+            a.remove()
+          }}
+        />
+      ) : viewer ? (
         <PdfViewer
           title={viewer.title}
           subtitle={viewer.subtitle}

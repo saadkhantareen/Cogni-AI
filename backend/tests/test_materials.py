@@ -43,6 +43,8 @@ def test_upload_pdf_extracts_pages_strips_headers_and_joins_hyphens(client):
     body = resp.json()
     assert body["kind"] == "pdf"
     assert body["name"] == "notes.pdf"
+    assert body["has_file"] is True
+    assert body["content_type"] == "application/pdf"
     assert body["chunk_count"] >= 1
     assert body["word_count"] > 0
     assert "text" not in body
@@ -56,11 +58,38 @@ def test_upload_pdf_extracts_pages_strips_headers_and_joins_hyphens(client):
     assert "function" in detail["text"]  # hyphenated break joined
     pages_seen = {c["page"] for c in detail["chunks"]}
     assert pages_seen  # page numbers were tagged onto chunks
+    assert detail["has_file"] is True
+
+    original = client.get(
+        f"/api/materials/{body['id']}/file", headers=_auth(client, TEACHER_A)
+    )
+    assert original.status_code == 200
+    assert original.headers["content-type"].startswith("application/pdf")
+    assert "notes.pdf" in (original.headers.get("content-disposition") or "")
+    assert original.content.startswith(b"%PDF")
 
     students = client.get(
         "/api/notifications", headers=_auth(client, STUDENT_IN_C1)
     ).json()
     assert any("notes.pdf" in n["text"] for n in students["items"])
+
+
+def test_pasted_text_has_no_original_file(client):
+    c1_id = _class_id(client, "CS-201-A", TEACHER_A)
+    text = "Paragraph about stacks and queues. " * 20
+    resp = client.post(
+        f"/api/classes/{c1_id}/materials",
+        json={"name": "Stacks notes", "text": text},
+        headers=_auth(client, TEACHER_A),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["kind"] == "text"
+    assert body["has_file"] is False
+    missing = client.get(
+        f"/api/materials/{body['id']}/file", headers=_auth(client, TEACHER_A)
+    )
+    assert missing.status_code == 404
 
 
 def test_upload_pasted_text_too_short_is_400(client):

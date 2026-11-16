@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     LOGIN_LOCKOUT_FAILURES: int = 8
     LOGIN_LOCKOUT_MINUTES: int = 10
 
+    # Original material files (PDF/DOCX/PPTX). When set, uploads go to Cloudinary
+    # as raw assets; otherwise Mongo GridFS is used (local/tests).
+    CLOUDINARY_CLOUD_NAME: str = ""
+    CLOUDINARY_API_KEY: str = ""
+    CLOUDINARY_API_SECRET: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]

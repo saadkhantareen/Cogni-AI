@@ -73,6 +73,23 @@ async def preview_material(material_id: str, user: CurrentUser = Depends(get_cur
     )
 
 
+@router.get("/api/materials/{material_id}/file")
+async def download_material_file(
+    material_id: str, user: CurrentUser = Depends(get_current_user)
+):
+    """Original upload bytes with the real extension (pdf / docx / pptx)."""
+    data, filename, content_type = await material_service.material_original_file(
+        user, material_id
+    )
+    safe = filename.replace('"', "")
+    disposition = "inline" if content_type == "application/pdf" else "attachment"
+    return Response(
+        content=data,
+        media_type=content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'{disposition}; filename="{safe}"'},
+    )
+
+
 @router.put("/api/materials/{material_id}/alias", response_model=MaterialSummaryOut)
 async def set_material_alias(
     material_id: str,

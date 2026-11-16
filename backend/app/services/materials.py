@@ -50,15 +50,26 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
+_CONTENT_TYPES = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
+
 def _material_summary(doc: dict, *, display_name: str | None = None) -> dict:
     out = to_out(doc)
     out["chunk_count"] = len(doc.get("chunks", []))
     out["word_count"] = _word_count(doc.get("text", ""))
     original = str(out.get("name") or "")
     out["display_name"] = (display_name or "").strip() or original
+    out["has_file"] = bool(doc.get("file_id"))
+    out["content_type"] = doc.get("content_type") or _CONTENT_TYPES.get(doc.get("kind"))
     out.pop("text", None)
     out.pop("chunks", None)
     out.pop("file_id", None)
+    out.pop("file_storage", None)
+    out.pop("file_url", None)
     return out
 
 
@@ -105,7 +116,9 @@ async def _delete_same_name_materials(cls: dict, name: str) -> int:
             if file_id:
                 from app.services.material_files import delete_material_file
 
-                await delete_material_file(str(file_id))
+                await delete_material_file(
+                    str(file_id), storage=doc.get("file_storage")
+                )
             removed += 1
     return removed
 
@@ -120,6 +133,9 @@ async def _insert_material(
     chunks: list[dict],
     replace: bool = False,
     file_id: str | None = None,
+    file_storage: str | None = None,
+    file_url: str | None = None,
+    content_type: str | None = None,
 ) -> dict:
     db = get_db()
     if replace:
@@ -135,6 +151,12 @@ async def _insert_material(
     }
     if file_id:
         doc["file_id"] = file_id
+        if file_storage:
+            doc["file_storage"] = file_storage
+        if file_url:
+            doc["file_url"] = file_url
+        if content_type:
+            doc["content_type"] = content_type
     result = await db.materials.insert_one(doc)
     doc["_id"] = result.inserted_id
 
@@ -174,12 +196,8 @@ async def upload_pdf_material(
     text = "\n\n".join(p["text"] for p in pages)
     from app.services.material_files import store_material_file
 
-    content_type = {
-        "pdf": "application/pdf",
-        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    }.get(kind, "application/octet-stream")
-    file_id = await store_material_file(data, filename, content_type)
+    content_type = _CONTENT_TYPES.get(kind, "application/octet-stream")
+    stored = await store_material_file(data, filename, content_type)
     return await _insert_material(
         actor,
         cls,
@@ -188,7 +206,10 @@ async def upload_pdf_material(
         text=text,
         chunks=chunks,
         replace=replace,
-        file_id=file_id,
+        file_id=stored.file_id,
+        file_storage=stored.storage,
+        file_url=stored.file_url,
+        content_type=stored.content_type,
     )
 
 
@@ -250,6 +271,11 @@ async def get_material(user: CurrentUser, material_id: str) -> dict:
     alias = await _alias_for_user(user.id, material_id)
     original = str(out.get("name") or "")
     out["display_name"] = alias or original
+    out["has_file"] = bool(doc.get("file_id"))
+    out["content_type"] = doc.get("content_type") or _CONTENT_TYPES.get(doc.get("kind"))
+    out.pop("file_id", None)
+    out.pop("file_storage", None)
+    out.pop("file_url", None)
     return out
 
 
@@ -313,16 +339,57 @@ async def delete_material(actor: CurrentUser, material_id: str) -> None:
     if file_id:
         from app.services.material_files import delete_material_file
 
-        await delete_material_file(str(file_id))
+        await delete_material_file(str(file_id), storage=doc.get("file_storage"))
     await log_activity(actor, f"Deleted material '{doc['name']}' from {cls['code']}")
 
 
-async def material_preview_pdf(user: CurrentUser, material_id: str) -> tuple[bytes, str]:
-    """PDF the teacher can open in the viewer.
+def _with_extension(name: str, kind: str) -> str:
+    lower = name.lower()
+    ext = f".{kind}" if kind in ("pdf", "docx", "pptx") else ""
+    if ext and not lower.endswith(ext):
+        return f"{name}{ext}"
+    return name
 
-    Original bytes are returned for stored PDFs. Everything else (Word,
-    slides, pasted notes, older uploads with no file) is rendered from the
-    extracted text.
+
+async def material_original_file(
+    user: CurrentUser, material_id: str
+) -> tuple[bytes, str, str]:
+    """Return the original upload bytes with filename + content type.
+
+    Used so View/Download keeps the real extension (pdf / docx / pptx), like
+    Google Classroom attachments.
+    """
+    from app.services.material_files import read_material_file
+
+    doc = await _get_material_or_404(material_id)
+    cls = await _get_class_or_404(doc["class_id"])
+    _assert_read_access(user, cls)
+    file_id = doc.get("file_id")
+    if not file_id:
+        raise HTTPException(status_code=404, detail="No original file for this material.")
+    kind = str(doc.get("kind") or "bin")
+    data = await read_material_file(
+        str(file_id),
+        storage=doc.get("file_storage"),
+        file_url=doc.get("file_url"),
+    )
+    if not data:
+        raise HTTPException(status_code=404, detail="Original file could not be loaded.")
+    name = _with_extension(str(doc.get("name") or f"material.{kind}"), kind)
+    content_type = (
+        doc.get("content_type")
+        or _CONTENT_TYPES.get(kind)
+        or "application/octet-stream"
+    )
+    return data, name, content_type
+
+
+async def material_preview_pdf(user: CurrentUser, material_id: str) -> tuple[bytes, str]:
+    """PDF for the in-app viewer.
+
+    Stored PDFs return original bytes. Word/PPTX/notes without an inline
+    preview fall back to a text-rendered PDF so Ask/Study still has something
+    to show.
     """
     from app.services.material_files import read_material_file
     from app.services.material_preview import build_material_preview_pdf, preview_filename
@@ -332,8 +399,11 @@ async def material_preview_pdf(user: CurrentUser, material_id: str) -> tuple[byt
     _assert_read_access(user, cls)
     name = str(doc.get("name") or "material")
     if doc.get("kind") == "pdf" and doc.get("file_id"):
-        original = await read_material_file(str(doc["file_id"]))
+        original = await read_material_file(
+            str(doc["file_id"]),
+            storage=doc.get("file_storage"),
+            file_url=doc.get("file_url"),
+        )
         if original and original.startswith(b"%PDF"):
-            filename = name if name.lower().endswith(".pdf") else f"{name}.pdf"
-            return original, filename
+            return original, _with_extension(name, "pdf")
     return build_material_preview_pdf(name, doc.get("text") or ""), preview_filename(name)

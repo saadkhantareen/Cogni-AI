@@ -19,6 +19,7 @@ pytesseract
 Pillow
 beautifulsoup4
 trafilatura>=2.3
+cloudinary
 spacy
 sentence-transformers
 ruff

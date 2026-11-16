@@ -19,6 +19,8 @@ class MaterialOut(OutBase):
     name: str
     display_name: str = ""
     kind: Literal["pdf", "docx", "pptx", "text", "url"]
+    has_file: bool = False
+    content_type: str | None = None
     text: str
     chunks: list[MaterialChunk] = Field(default_factory=list)
     created_at: datetime
@@ -30,6 +32,8 @@ class MaterialSummaryOut(OutBase):
     name: str
     display_name: str = ""
     kind: Literal["pdf", "docx", "pptx", "text", "url"]
+    has_file: bool = False
+    content_type: str | None = None
     chunk_count: int
     word_count: int
     created_at: datetime
